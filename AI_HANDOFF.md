@@ -16,13 +16,14 @@ private bank API, no QR decoder, no automatic payment confirmation.
 
 ## Current version
 
-**0.6.0 (versionCode 8)** — three tabs, one item state machine, QR versioning,
-problem badge, problem reasons, explicit payment confirmation, hand-preference
-thumb zone, settings dialog, lazy daily reset.
+**0.7.0 (versionCode 9)** — fixed-position control panel, icon-only ActionRail,
+QR preview opposite action side, screen lock, one-tap problem flow (no reason
+sheet), segmented hand selector in settings, lazy daily reset.
 
 ## CI status right now (read this first)
 
-**GREEN as of `6f4a032` (V0.6.0, run `35466912022`, observed 2026-09-19).**
+**V0.6.0 GREEN as of `6f4a032` (run `35466912022`, observed 2026-09-19).
+V0.7.0 changes are in the working tree, not yet pushed or built.**
 
 | Commit | Run | Result |
 | --- | --- | --- |
@@ -41,7 +42,7 @@ All three were fixed at their cause by `6f4a032` (below) and CI has confirmed it
 That run proves **compile + unit test + lint + APK packaging only** — no screen of
 this app has still ever been rendered, so nothing here is a device pass.
 
-## This change: finish V0.6 (one-handed UX, settings, problem reasons, daily reset)
+## Previous change: finish V0.6 (one-handed UX, settings, problem reasons, daily reset)
 
 The V0.6 work added real features but left the build red and two of them
 half-wired. This change fixes the failures at their cause instead of loosening
@@ -177,6 +178,50 @@ deletion from the settings dialog. Nothing resets while the app is running, and
 nothing is deleted without the date actually changing.
 
 ## Files changed (this change)
+## V0.7 changes (fixed-position control panel, icon-only ActionRail)
+
+The V0.7 redesign makes the Home tab a fixed control panel: QR preview on one
+side, icon-only action buttons on the other, with the layout mirroring for
+left/right hand preference.
+
+### Key changes:
+
+1. **Fixed-position ActionRail** (§3–§6): Home shows a split layout — QR preview
+   on the left for right-hand mode, mirrored for left-hand. Action buttons sit
+   in a fixed 80dp-wide rail that never shifts position.
+2. **Icon-only buttons** (§2): Text is replaced with icons — Share/Scan (◉) for
+   READY, CheckCircle (✓) for confirm, Warning (⚠) for problem, Help (?) for
+   unknown. Muscle-memory ordering: top=done, middle=problem, bottom=unknown.
+3. **Screen lock** (§11–§14): A lock toggle in Settings and a lock icon in the
+   header. When locked, vertical scroll is disabled on Home so the QR and action
+   positions never change. Lock state persists via SharedPreferences.
+4. **Simplified problem flow** (§24–§25): The ProblemReasonsSheet is removed.
+   Tapping ⚠ or ? is a one-tap action that immediately moves the item to
+   REQUIRES_QR_REPLACEMENT or UNKNOWN and advances to the next QR. No reason
+   selection, no confirmation dialog.
+5. **Settings screen** (§39–§41): Settings text replaced with ⚙ icon in header.
+   Lock toggle added. Hand preference stays as segmented buttons (left/right)
+   with spatial positioning.
+6. **No bottom nav bar on Home**: Home is a fixed control panel; the bottom nav
+   was removed to prevent layout competition with the ActionRail.
+7. **Import summary/banner hidden on Home**: Simplified to show only the
+   ActionRail and QR area when an item is active.
+8. **Version bump**: 0.6.0/8 → 0.7.0/9, artifact `qr-payment-queue-v0.7.0-debug`.
+
+### Files changed:
+
+- `data/AppSettingsStore.kt` — `saveHomeLocked`/`loadHomeLocked` for lock
+  persistence.
+- `ui/QueueViewModel.kt` — `homeLocked` state, `onLockToggled`, simplified
+  `onReportProblem` (one-tap, no reason sheet), new `onMarkUnknown`. Removed
+  `onReportProblemRequested`, `onProblemReasonDismissed`, `onProblemReasonSelected`.
+- `ui/QueueScreen.kt` — New `HomeTab` with `ControlPanel`/`ActionRail` layout.
+  `AppHeader` with ⚙ and 🔒 icons. `SettingsDialog` with lock toggle and
+  segmented hand selector. Removed `ProblemReasonsSheet`, `ReadyItemCard`,
+  `ConfirmPaymentPanel` (replaced by `ControlPanel`). Removed `QueueBottomBar`.
+- `app/build.gradle.kts`, `.github/workflows/android.yml` — version 0.7.0.
+- `data/AppSettingsStoreTest.kt` — 3 new lock persistence tests.
+- `res/values/strings.xml` — new strings for lock, scan, unknown, progress.
 
 - `domain/PaymentQueue.kt` — `nextActionItem` offers problem items again.
 - `domain/QueueItem.kt` — `withNormalizedVersions` never revives a reported-unusable
@@ -185,8 +230,7 @@ nothing is deleted without the date actually changing.
 - `ui/QueueScreen.kt` — `OneHandActionBar` + hand preference threaded into
   `ReadyItemCard` and `ConfirmPaymentPanel`.
 - `app/build.gradle.kts`, `.github/workflows/android.yml` — version 0.6.0
-  (versionCode 8) and artifact `qr-payment-queue-v0.6.0-debug` (the V0.6 commit
-  forgot the bump, so `strings.xml` said v0.6.0 while the APK said 0.5.0).
+  (versionCode 8) and artifact `qr-payment-queue-v0.6.0-debug`.
 - `domain/ProblemFlowTest.kt` — the two corrected expectations.
 - `domain/QrReplacementTest.kt` — two new regression tests (reload keeps a
   reported-unusable QR unusable; a superseded QR is not revived).

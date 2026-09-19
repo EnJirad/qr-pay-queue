@@ -110,11 +110,9 @@ data class QueueUiState(
     val autoDailyReset: Boolean = false,
     val settingsVisible: Boolean = false,
 
-    // ---- problem reasons ----------------------------------------------------
-    /** True when the problem-reasons bottom sheet is showing for an item. */
-    val problemReasonSheetVisible: Boolean = false,
-    /** The item that the user is reporting a problem for. */
-    val problemReasonItemId: String? = null,
+    // ---- home lock (V0.7) --------------------------------------------------
+    /** When true, Home prevents vertical scroll so QR + actions stay fixed. */
+    val homeLocked: Boolean = false,
 
     // ---- clear item ---------------------------------------------------------
     /** True when the clear-item confirmation dialog is visible. */
@@ -190,8 +188,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         // Load persisted settings.
         val handPref = settingsStore.loadHandPreference()
         val autoReset = settingsStore.loadAutoDailyReset()
+        val homeLocked = settingsStore.loadHomeLocked()
         _uiState.update {
-            it.copy(handPreference = handPref, autoDailyReset = autoReset)
+            it.copy(handPreference = handPref, autoDailyReset = autoReset, homeLocked = homeLocked)
         }
 
         // Lazy daily reset: check if a new day has started since the last reset.
@@ -595,6 +594,14 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         persist(queue.markQrUnusable(itemId, QR_UNUSABLE_DETAIL, System.currentTimeMillis()))
     }
 
+    // ---- lock toggle --------------------------------------------------------
+
+    fun onLockToggled() {
+        val newLocked = !_uiState.value.homeLocked
+        settingsStore.saveHomeLocked(newLocked)
+        _uiState.update { it.copy(homeLocked = newLocked) }
+    }
+
     // ---- settings ----------------------------------------------------------
 
     fun onSettingsRequested() {
@@ -623,32 +630,27 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(clearConfirmationVisible = true) }
     }
 
-    // ---- problem reasons ----------------------------------------------------
+    // ---- simplified problem flow (V0.7: one-tap, no reason sheet) ----------
 
-    fun onReportProblemRequested(itemId: String) {
-        _uiState.update {
-            it.copy(
-                problemReasonSheetVisible = true,
-                problemReasonItemId = itemId,
-            )
-        }
-    }
-
-    fun onProblemReasonDismissed() {
-        _uiState.update {
-            it.copy(problemReasonSheetVisible = false, problemReasonItemId = null)
-        }
-    }
-
-    fun onProblemReasonSelected(reason: String) {
-        val itemId = _uiState.value.problemReasonItemId ?: return
-        _uiState.update {
-            it.copy(problemReasonSheetVisible = false, problemReasonItemId = null)
-        }
+    /**
+     * The user tapped the problem icon on an item that was just shared. Marks
+     * the QR as unusable and advances to the next item immediately — one tap,
+     * no reason selection, no confirmation.
+     */
+    fun onReportProblem(itemId: String) {
         val queue = _uiState.value.queue ?: return
         val nowMillis = System.currentTimeMillis()
-        val updated = queue.reportProblem(itemId, reason, nowMillis)
-        persist(updated)
+        persist(queue.markQrUnusable(itemId, QR_UNUSABLE_DETAIL, nowMillis))
+    }
+
+    /**
+     * The user tapped the unknown icon. The item moves to UNKNOWN and the next
+     * QR becomes current. UNKNOWN lives in the problem tab.
+     */
+    fun onMarkUnknown(itemId: String) {
+        val queue = _uiState.value.queue ?: return
+        if (queue.item(itemId)?.status != PaymentStatus.AWAITING_USER_CONFIRMATION) return
+        persist(queue.markUnknown(itemId, System.currentTimeMillis()))
     }
 
     // ---- clear item ---------------------------------------------------------

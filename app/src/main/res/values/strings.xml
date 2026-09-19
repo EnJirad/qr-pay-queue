@@ -4,7 +4,7 @@
     <string name="screen_title">QR Payment Queue</string>
     <string name="screen_subtitle">เลือกธนาคาร จัดคิวภาพ QR ส่งให้ธนาคารที่เลือกทีละรูป</string>
     <string name="screen_description">เลือกธนาคารสำหรับชำระเงินก่อน แล้วเลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
-    <string name="version_chip">v0.6.0 · one-handed UX + daily reset</string>
+    <string name="version_chip">v0.7.0 · fixed-position control panel</string>
 
     <!-- tabs -->
     <string name="tab_home">หน้าแรก</string>
@@ -32,6 +32,11 @@
     <string name="action_cancel">ยกเลิก</string>
     <string name="action_dismiss">ปิด</string>
     <string name="action_settings">ตั้งค่า</string>
+    <string name="action_scan">ส่ง QR ไปธนาคาร</string>
+    <string name="action_unknown">ไม่ทราบผล</string>
+    <string name="action_lock">ล็อกหน้าจอ</string>
+    <string name="action_unlock">ปลดล็อกหน้าจอ</string>
+    <string name="home_progress">%1$d / %2$d</string>
 
     <!-- bank selection -->
     <string name="bank_section_title">ธนาคารสำหรับชำระเงิน</string>
@@ -127,6 +132,7 @@
     <string name="settings_daily_reset_on">เปิด</string>
     <string name="settings_daily_reset_off">ปิด</string>
     <string name="settings_daily_reset_desc">ระบบจะล้างข้อมูล QR ของวันก่อนหน้าโดยอัตโนมัติเมื่อเข้าสู่วันใหม่</string>
+    <string name="settings_lock_label">ล็อกหน้าหลัก</string>
     <string name="settings_manual_reset">ล้างข้อมูลของวันนี้</string>
     <string name="settings_manual_reset_desc">QR และรายการที่ยังไม่เสร็จจะถูกลบออกจากรายการวันนี้</string>
     <string name="settings_bank_section">ธนาคาร</string>

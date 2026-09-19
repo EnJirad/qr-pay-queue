@@ -81,6 +81,26 @@ class InMemoryAppSettingsStoreTest {
         store.saveLastResetDate("2026-09-20")
         assertEquals("2026-09-20", store.loadLastResetDate())
     }
+
+    // ---- home lock (V0.7) ----
+
+    @Test
+    fun `default home lock is false`() {
+        assertFalse(store.loadHomeLocked())
+    }
+
+    @Test
+    fun `saveHomeLocked persists true`() {
+        store.saveHomeLocked(true)
+        assertTrue(store.loadHomeLocked())
+    }
+
+    @Test
+    fun `saveHomeLocked persists false`() {
+        store.saveHomeLocked(true)
+        store.saveHomeLocked(false)
+        assertFalse(store.loadHomeLocked())
+    }
 }
 
 /**
@@ -90,6 +110,7 @@ class InMemoryAppSettingsStore : AppSettingsStore {
     private var handPref: HandPreference = HandPreference.RIGHT
     private var autoReset: Boolean = false
     private var lastResetDate: String? = null
+    private var homeLocked: Boolean = false
 
     override fun saveHandPreference(pref: HandPreference): Boolean {
         handPref = pref
@@ -111,4 +132,11 @@ class InMemoryAppSettingsStore : AppSettingsStore {
     }
 
     override fun loadLastResetDate(): String? = lastResetDate
+
+    override fun saveHomeLocked(locked: Boolean): Boolean {
+        homeLocked = locked
+        return true
+    }
+
+    override fun loadHomeLocked(): Boolean = homeLocked
 }

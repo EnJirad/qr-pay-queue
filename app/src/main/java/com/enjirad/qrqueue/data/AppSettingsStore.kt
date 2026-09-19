@@ -16,6 +16,8 @@ interface AppSettingsStore {
     fun loadAutoDailyReset(): Boolean
     fun saveLastResetDate(dateString: String): Boolean
     fun loadLastResetDate(): String?
+    fun saveHomeLocked(locked: Boolean): Boolean
+    fun loadHomeLocked(): Boolean
 }
 
 class SharedPreferencesAppSettingsStore(context: Context) : AppSettingsStore {
@@ -43,10 +45,17 @@ class SharedPreferencesAppSettingsStore(context: Context) : AppSettingsStore {
 
     override fun loadLastResetDate(): String? = prefs.getString(KEY_LAST_RESET, null)
 
+    override fun saveHomeLocked(locked: Boolean): Boolean = runCatching {
+        prefs.edit().putBoolean(KEY_HOME_LOCKED, locked).apply()
+    }.isSuccess
+
+    override fun loadHomeLocked(): Boolean = prefs.getBoolean(KEY_HOME_LOCKED, false)
+
     private companion object {
         const val PREFS_NAME = "qr_queue_settings"
         const val KEY_HAND = "hand_preference"
         const val KEY_AUTO_RESET = "auto_daily_reset"
         const val KEY_LAST_RESET = "last_reset_date"
+        const val KEY_HOME_LOCKED = "home_locked"
     }
 }

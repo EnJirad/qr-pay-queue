@@ -8,10 +8,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,9 +31,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Help
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
@@ -40,9 +44,9 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
@@ -54,7 +58,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,6 +71,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -91,7 +95,6 @@ import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueItem
 import com.enjirad.qrqueue.domain.HandPreference
-import androidx.compose.material3.ExperimentalMaterial3Api
 import com.enjirad.qrqueue.ui.theme.QrQueueTheme
 import java.io.File
 import java.text.SimpleDateFormat
@@ -125,8 +128,8 @@ data class QueueCallbacks(
     val onAutoDailyResetChanged: (Boolean) -> Unit,
     val onManualDailyResetRequested: () -> Unit,
     val onReportProblem: (String) -> Unit,
-    val onProblemReasonSelected: (String) -> Unit,
-    val onProblemReasonDismissed: () -> Unit,
+    val onMarkUnknown: (String) -> Unit,
+    val onLockToggled: () -> Unit,
     val onClearItem: (String) -> Unit,
     val onClearItemConfirmed: () -> Unit,
     val onClearItemDismissed: () -> Unit,
@@ -203,9 +206,9 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
             onHandPreferenceChanged = viewModel::onHandPreferenceChanged,
             onAutoDailyResetChanged = viewModel::onAutoDailyResetChanged,
             onManualDailyResetRequested = viewModel::onManualDailyResetRequested,
-            onReportProblem = viewModel::onReportProblemRequested,
-            onProblemReasonSelected = viewModel::onProblemReasonSelected,
-            onProblemReasonDismissed = viewModel::onProblemReasonDismissed,
+            onReportProblem = viewModel::onReportProblem,
+            onMarkUnknown = viewModel::onMarkUnknown,
+            onLockToggled = viewModel::onLockToggled,
             onClearItem = viewModel::onClearItemRequested,
             onClearItemConfirmed = viewModel::onClearItemConfirmed,
             onClearItemDismissed = viewModel::onClearItemDismissed,
@@ -288,20 +291,15 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
     if (state.settingsVisible) {
         SettingsDialog(
             handPreference = state.handPreference,
+            homeLocked = state.homeLocked,
             autoDailyReset = state.autoDailyReset,
             selectedBank = state.selectedBank,
             onHandPreferenceChanged = callbacks.onHandPreferenceChanged,
             onAutoDailyResetChanged = callbacks.onAutoDailyResetChanged,
+            onLockToggled = callbacks.onLockToggled,
             onManualDailyReset = callbacks.onManualDailyResetRequested,
             onChangeBank = callbacks.onChangeBank,
             onDismiss = callbacks.onSettingsDismissed,
-        )
-    }
-
-    if (state.problemReasonSheetVisible) {
-        ProblemReasonsSheet(
-            onReasonSelected = callbacks.onProblemReasonSelected,
-            onDismiss = callbacks.onProblemReasonDismissed,
         )
     }
 
@@ -319,34 +317,59 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { QueueBottomBar(state = state, onSelectTab = callbacks.onSelectTab) },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            AppHeader(onSettingsRequested = callbacks.onSettingsRequested)
-            when (state.selectedTab) {
-                QueueTab.HOME -> HomeTab(state = state, callbacks = callbacks)
-                QueueTab.PROBLEMS -> ProblemsTab(
-                    queue = state.queue,
-                    handPreference = state.handPreference,
+        when (state.selectedTab) {
+            QueueTab.HOME -> {
+                HomeTab(
+                    state = state,
                     callbacks = callbacks,
+                    modifier = Modifier.padding(innerPadding),
                 )
-                QueueTab.COMPLETED -> CompletedTab(queue = state.queue)
             }
-            SafetyCard()
-            Text(
-                text = stringResource(R.string.status_pipeline_caption),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+            QueueTab.PROBLEMS -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    AppHeader(
+                        handPreference = state.handPreference,
+                        homeLocked = state.homeLocked,
+                        onSettingsRequested = callbacks.onSettingsRequested,
+                        onLockToggled = callbacks.onLockToggled,
+                    )
+                    ProblemsTab(
+                        queue = state.queue,
+                        handPreference = state.handPreference,
+                        callbacks = callbacks,
+                    )
+                    SafetyCard()
+                }
+            }
+            QueueTab.COMPLETED -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    AppHeader(
+                        handPreference = state.handPreference,
+                        homeLocked = state.homeLocked,
+                        onSettingsRequested = callbacks.onSettingsRequested,
+                        onLockToggled = callbacks.onLockToggled,
+                    )
+                    CompletedTab(queue = state.queue)
+                    SafetyCard()
+                }
+            }
         }
+        // Bottom nav is not shown: Home is a fixed control panel.
     }
 }
 
@@ -390,33 +413,102 @@ private fun QueueBottomBar(state: QueueUiState, onSelectTab: (QueueTab) -> Unit)
 // ---- shell ------------------------------------------------------------------
 
 @Composable
-private fun AppHeader(onSettingsRequested: () -> Unit) {
+private fun AppHeader(
+    handPreference: HandPreference,
+    homeLocked: Boolean,
+    onSettingsRequested: () -> Unit,
+    onLockToggled: () -> Unit,
+) {
+    val iconsEnd = handPreference == HandPreference.RIGHT
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary) {
-            QrGlyph(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .size(22.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
+        if (!iconsEnd) {
+            HeaderIcons(
+                homeLocked = homeLocked,
+                onSettingsRequested = onSettingsRequested,
+                onLockToggled = onLockToggled,
+            )
+            Spacer(Modifier.weight(1f))
+        } else {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary) {
+                QrGlyph(
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .size(22.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = stringResource(R.string.screen_title),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
             )
         }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = stringResource(R.string.screen_title),
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.weight(1f),
-        )
+        if (iconsEnd) {
+            HeaderIcons(
+                homeLocked = homeLocked,
+                onSettingsRequested = onSettingsRequested,
+                onLockToggled = onLockToggled,
+            )
+        } else {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary) {
+                QrGlyph(
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .size(22.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = stringResource(R.string.screen_title),
+                style = MaterialTheme.typography.titleLarge,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeaderIcons(
+    homeLocked: Boolean,
+    onSettingsRequested: () -> Unit,
+    onLockToggled: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Surface(
+            onClick = onLockToggled,
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.size(40.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Lock,
+                contentDescription = stringResource(
+                    if (homeLocked) R.string.action_unlock else R.string.action_lock,
+                ),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                tint = if (homeLocked) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
         Surface(
             onClick = onSettingsRequested,
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(40.dp),
         ) {
-            Text(
-                text = stringResource(R.string.action_settings),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxSize().wrapContentSize(),
+            Icon(
+                imageVector = Icons.Outlined.Settings,
+                contentDescription = stringResource(R.string.action_settings),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -731,85 +823,80 @@ private fun BankSelectionDialog(
     )
 }
 
-// ---- tab 1: home ------------------------------------------------------------
+// ---- tab 1: home (V0.7 fixed-position control panel) -----------------------
 
+/**
+ * V0.7 Home: a fixed control panel with QR preview on one side and
+ * icon-only action buttons on the other. When locked, vertical scrolling
+ * is disabled so positions never change.
+ */
 @Composable
-private fun ColumnScope.HomeTab(state: QueueUiState, callbacks: QueueCallbacks) {
-    state.importSummary?.let { summary ->
-        ImportSummaryBanner(summary = summary, onDismiss = callbacks.onImportSummaryShown)
-    }
+private fun HomeTab(
+    state: QueueUiState,
+    callbacks: QueueCallbacks,
+    modifier: Modifier = Modifier,
+) {
+    val leftHanded = state.handPreference == HandPreference.LEFT
+    val scrollState = rememberScrollState()
+    val scrollModifier = if (state.homeLocked) Modifier else Modifier.verticalScroll(scrollState)
 
-    // Bank selection card is always visible on Home.
-    BankSelectionCard(
-        selectedBank = state.selectedBank,
-        bankStatus = state.bankStatus,
-        onChangeBank = callbacks.onChangeBank,
-    )
-
-    if (state.importing) {
-        ImportProgressCard(progress = state.importProgress)
-        return
-    }
-
-    val queue = state.queue
-    if (queue == null) {
-        EmptyHome(canImport = state.canImport, onImportImages = callbacks.onImportImages)
-        return
-    }
-
-    val problem = state.nextActionItem?.takeIf { item -> item.status.isProblem }
-    val awaiting = state.awaitingAnswerItem
-    val ready = state.nextActionItem?.takeIf { item -> item.status == PaymentStatus.READY }
-    val highlighted = setOfNotNull(problem?.id, awaiting?.id, ready?.id)
-
-    if (problem != null) {
-        SectionTitle(text = stringResource(R.string.home_attention_title))
-        ProblemItemCard(
-            item = problem,
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .then(scrollModifier)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        AppHeader(
             handPreference = state.handPreference,
-            callbacks = callbacks,
+            homeLocked = state.homeLocked,
+            onSettingsRequested = callbacks.onSettingsRequested,
+            onLockToggled = callbacks.onLockToggled,
         )
-    }
-
-    if (awaiting != null) {
-        SectionTitle(text = stringResource(R.string.confirm_section_title))
-        ConfirmPaymentPanel(
-            item = awaiting,
-            selectedBank = state.selectedBank,
-            handPreference = state.handPreference,
-            callbacks = callbacks,
-        )
-    } else if (awaiting == null && problem == null && ready != null) {
-        SectionTitle(text = stringResource(R.string.home_ready_title))
-        ReadyItemCard(
-            item = ready,
-            selectedBank = state.selectedBank,
-            handPreference = state.handPreference,
-            callbacks = callbacks,
-        )
-    }
-
-    if (awaiting == null && problem == null && ready == null && queue.finished) {
-        FinishedBanner(queue = queue, onImportImages = callbacks.onImportImages)
-    }
-
-    val remaining = queue.items
-        .filter { item -> item.isActive && item.id !in highlighted }
-        .sortedBy { item -> item.position }
-    if (remaining.isNotEmpty()) {
-        SectionTitle(
-            text = stringResource(R.string.home_remaining_title),
-            badge = stringResource(R.string.queue_badge_count, remaining.size),
-        )
-        remaining.forEach { item ->
-            CompactItemCard(item = item, queue = queue, callbacks = callbacks)
+        state.importSummary?.let { summary ->
+            ImportSummaryBanner(summary = summary, onDismiss = callbacks.onImportSummaryShown)
         }
-    }
+        BankSelectionCard(
+            selectedBank = state.selectedBank,
+            bankStatus = state.bankStatus,
+            onChangeBank = callbacks.onChangeBank,
+        )
+        if (state.importing) {
+            ImportProgressCard(progress = state.importProgress)
+            return@Column
+        }
+        val queue = state.queue
+        val currentItem = state.nextActionItem
 
-    ImportCard(canImport = state.canImport, onImportImages = callbacks.onImportImages)
-
-    TextButton(onClick = callbacks.onClearRequested) {
-        Text(text = stringResource(R.string.action_clear_queue))
+        if (currentItem != null) {
+            ControlPanel(
+                item = currentItem,
+                selectedBank = state.selectedBank,
+                handPreference = state.handPreference,
+                leftHanded = leftHanded,
+                callbacks = callbacks,
+            )
+        } else if (queue != null && queue.finished) {
+            FinishedControlPanel(
+                queue = queue,
+                leftHanded = leftHanded,
+                onImportImages = callbacks.onImportImages,
+            )
+        } else if (queue == null) {
+            EmptyHome(canImport = state.canImport, onImportImages = callbacks.onImportImages)
+        }
+        if (queue != null && queue.itemCount > 0) {
+            Text(
+                text = stringResource(R.string.home_progress, queue.completedCount, queue.itemCount),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        ImportCard(canImport = state.canImport, onImportImages = callbacks.onImportImages)
+        TextButton(onClick = callbacks.onClearRequested) {
+            Text(text = stringResource(R.string.action_clear_queue))
+        }
+        SafetyCard()
     }
 }
 
@@ -923,6 +1010,231 @@ private fun ImportCard(canImport: Boolean, onImportImages: () -> Unit) {
                     MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
                 },
             )
+        }
+    }
+}
+
+// ---- control panel (V0.7) ---------------------------------------------------
+
+/**
+ * V0.7 §4/§5: QR preview on one side, ActionRail on the other.
+ * Right-hand mode: QR left, actions right. Left-hand: mirror.
+ */
+@Composable
+private fun ControlPanel(
+    item: QueueItem,
+    selectedBank: BankInfo?,
+    handPreference: HandPreference,
+    leftHanded: Boolean,
+    callbacks: QueueCallbacks,
+) {
+    val isReady = item.status == PaymentStatus.READY
+    val isAwaiting = item.status == PaymentStatus.AWAITING_USER_CONFIRMATION
+    val isProblem = item.status.isProblem
+
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            when {
+                isProblem -> MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                isAwaiting -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f)
+                else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+            },
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leftHanded) {
+                ActionRail(
+                    item = item,
+                    selectedBank = selectedBank,
+                    isReady = isReady,
+                    isAwaiting = isAwaiting,
+                    isProblem = isProblem,
+                    callbacks = callbacks,
+                )
+                QrPreviewArea(item = item, modifier = Modifier.weight(1f).height(300.dp))
+            } else {
+                QrPreviewArea(item = item, modifier = Modifier.weight(1f).height(300.dp))
+                ActionRail(
+                    item = item,
+                    selectedBank = selectedBank,
+                    isReady = isReady,
+                    isAwaiting = isAwaiting,
+                    isProblem = isProblem,
+                    callbacks = callbacks,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QrPreviewArea(item: QueueItem, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        QrImagePreview(
+            path = item.previewFilePath,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(text = item.itemLabel, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun ActionRail(
+    item: QueueItem,
+    selectedBank: BankInfo?,
+    isReady: Boolean,
+    isAwaiting: Boolean,
+    isProblem: Boolean,
+    callbacks: QueueCallbacks,
+) {
+    Column(
+        modifier = Modifier.width(80.dp).height(300.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        when {
+            isReady -> {
+                IconButton(
+                    onClick = { callbacks.onShareItem(item.id) },
+                    modifier = Modifier
+                        .size(72.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = stringResource(R.string.action_scan),
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+            isAwaiting -> {
+                ActionIconButton(
+                    onClick = { callbacks.onConfirmCompleted(item.id) },
+                    icon = Icons.Outlined.CheckCircle,
+                    contentDescription = stringResource(R.string.action_confirm_completed),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(16.dp))
+                ActionIconButton(
+                    onClick = { callbacks.onReportProblem(item.id) },
+                    icon = Icons.Outlined.Warning,
+                    contentDescription = stringResource(R.string.action_report_problem),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(16.dp))
+                ActionIconButton(
+                    onClick = { callbacks.onMarkUnknown(item.id) },
+                    icon = Icons.Outlined.Help,
+                    contentDescription = stringResource(R.string.action_unknown),
+                    tint = MaterialTheme.colorScheme.tertiary,
+                )
+            }
+            isProblem -> {
+                ActionIconButton(
+                    onClick = {
+                        if (item.status.requiresQrReplacement) callbacks.onReplaceQr(item.id)
+                        else callbacks.onRetryItem(item.id)
+                    },
+                    icon = Icons.Outlined.Refresh,
+                    contentDescription = stringResource(
+                        if (item.status.requiresQrReplacement) R.string.action_replace_qr
+                        else R.string.action_retry,
+                    ),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionIconButton(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    contentDescription: String,
+    tint: Color,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = tint.copy(alpha = 0.12f),
+        modifier = Modifier.size(64.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            tint = tint,
+        )
+    }
+}
+
+@Composable
+private fun FinishedControlPanel(
+    queue: PaymentQueue,
+    leftHanded: Boolean,
+    onImportImages: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leftHanded) {
+                ActionIconButton(
+                    onClick = onImportImages,
+                    icon = Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.action_import),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(Icons.Outlined.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.finished_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.finished_count, queue.completedCount, queue.itemCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            } else {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(Icons.Outlined.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.finished_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.finished_count, queue.completedCount, queue.itemCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                ActionIconButton(
+                    onClick = onImportImages,
+                    icon = Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.action_import),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
@@ -1723,9 +2035,11 @@ private fun SettingsDialog(
     selectedBank: BankInfo?,
     onHandPreferenceChanged: (HandPreference) -> Unit,
     onAutoDailyResetChanged: (Boolean) -> Unit,
+    homeLocked: Boolean,
     onManualDailyReset: () -> Unit,
     onChangeBank: () -> Unit,
     onDismiss: () -> Unit,
+    onLockToggled: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1761,6 +2075,21 @@ private fun SettingsDialog(
                             Text(text = label)
                         }
                     }
+                }
+                // Lock toggle (V0.7 §11–§14)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_lock_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Switch(
+                        checked = homeLocked,
+                        onCheckedChange = { onLockToggled() },
+                    )
                 }
                 HorizontalDivider()
                 // Daily reset
@@ -1825,55 +2154,6 @@ private fun SettingsDialog(
     )
 }
 
-// ---- problem reasons bottom sheet --------------------------------------------
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ProblemReasonsSheet(
-    onReasonSelected: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val reasons = listOf(
-        R.string.problem_reason_qr_unusable,
-        R.string.problem_reason_bank_rejected,
-        R.string.problem_reason_expired,
-        R.string.problem_reason_cannot_pay,
-        R.string.problem_reason_image_issue,
-        R.string.problem_reason_other,
-    )
-    val sheetState = rememberModalBottomSheetState()
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.problem_reason_title),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-            reasons.forEach { reasonRes ->
-                val label = stringResource(reasonRes)
-                Surface(
-                    onClick = { onReasonSelected(label) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-        }
-    }
-}
 
 // ---- clear item confirmation ------------------------------------------------
 
@@ -1935,8 +2215,8 @@ private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onAutoDailyResetChanged = {},
     onManualDailyResetRequested = {},
     onReportProblem = {},
-    onProblemReasonSelected = {},
-    onProblemReasonDismissed = {},
+    onMarkUnknown = {},
+    onLockToggled = {},
     onClearItem = {},
     onClearItemConfirmed = {},
     onClearItemDismissed = {},
