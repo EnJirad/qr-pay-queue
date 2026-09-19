@@ -13,13 +13,15 @@ QR Payment Queue — native Android application for organizing QR payment tasks.
 
 ## Current status
 
-**V2 implemented in source; CI verification pending.** The previous session had
-the workflow failing before Gradle ever ran; that was fixed by rewriting
-`.github/workflows/android.yml`. This session replaces the V0.1 "import is
-planned" placeholder with the real V2 workflow. The sandbox has **no JDK and no
-Android SDK**, so no local Gradle build was possible here: the build authority
-remains GitHub Actions. Do not report V2 as verified until the workflow run for
-the V2 commit is observed green.
+**V2 implemented and verified green in GitHub Actions.** This session replaced
+the V0.1 "import is planned" placeholder with the real V2 workflow (multi-image
+photo-picker import, ZXing decoding, EMVCo validation, duplicate detection, a
+sequential queue with explicit confirmation, persistence and a summary).
+The sandbox has **no JDK and no Android SDK**, so no local Gradle build was
+possible here; verification is the observed CI run for commit `7dd3ed9`
+(run [35430531448](https://github.com/EnJirad/qr-pay-queue/actions/runs/35430531448)):
+unit tests, lint, `assembleDebug`, APK existence/size checks and artifact upload
+all passed in 2m38s.
 
 ## V2 features implemented
 
@@ -135,7 +137,9 @@ No other dependency was added: image loading uses `BitmapFactory`, storage uses
 
 ## Tests performed
 
-`./gradlew testDebugUnitTest` (CI) covers the pure logic:
+72 test methods (JUnit 4, one `@Test` each), all passing in CI run
+`35430531448` (`./gradlew testDebugUnitTest` → BUILD SUCCESSFUL). They cover the
+pure logic:
 
 - **Parser** — real EMVCo PromptPay fixtures (dynamic with amount and reference,
   static without amount, bill payment, national ID, e-Wallet, unsupported AID,
@@ -174,8 +178,25 @@ and APK build for V2 happens in GitHub Actions.
 ## Build result
 
 - LOCAL BUILD: **not performed / not possible** (no JDK, no Android SDK here).
-- GITHUB ACTIONS: **pending** for the V2 commit — `testDebugUnitTest` →
-  `lintDebug` → `assembleDebug` → APK verification → artifact upload.
+- GITHUB ACTIONS (V2, commit `7dd3ed9`, run `35430531448`): **SUCCESS**, 2m38s.
+  - `./gradlew testDebugUnitTest --stacktrace` → `BUILD SUCCESSFUL in 22s`
+    (72 test methods, 0 failures).
+  - `./gradlew lintDebug --stacktrace` → `BUILD SUCCESSFUL in 28s`.
+  - `./gradlew assembleDebug --stacktrace` → `BUILD SUCCESSFUL in 45s`.
+  - `test -f` / `test -s` on the APK → passed; `ls -lh` → `9.5M`;
+    `unzip -l` shows a real APK (`classes.dex` 18,137,284 bytes and
+    `AndroidManifest.xml`).
+  - Artifact `qr-payment-queue-debug-apk` uploaded, final size 9,482,077 bytes,
+    not expired.
+- Failure history for this session:
+  - Run `35430354194` (first V2 commit) **FAILED** at `testDebugUnitTest`:
+    71 tests completed, 1 failed — `EmvCoQrParserTest > parsesBillPayment`, an
+    `assertTrue(outcome is ParseOutcome.Accepted)`. Root cause: the parser chose
+    the account type from the tag (29 vs 30) while the *fixture* carried the
+    bill-payment AID (`A000000677010112`) under tag 29, so it was rejected as an
+    unsupported application id. Fix: identify the scheme by its AID (tag 30
+    remains the standard placement, tag 29 + bill-payment AID now also works),
+    and correct the fixture to the standard tag 30 payload. Re-run green.
 - Historical context: runs #1 and #2 of the old workflow failed inside
   `android-actions/setup-android@v3` before Gradle ran; the workflow was
   rewritten (`ubuntu-24.04`, `setup-android@v4` with explicit packages,
@@ -187,9 +208,14 @@ Expected: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## APK verification result
 
-**Not verified yet — no V2 APK has been observed.** Verification is CI steps
-`test -f`, `test -s`, `ls -lh`, `unzip -l` followed by artifact upload
-`qr-payment-queue-debug-apk` (`if-no-files-found: error`).
+Verified for commit `7dd3ed9` (run `35430531448`):
+
+- `test -f app/build/outputs/apk/debug/app-debug.apk` → passed (file exists).
+- `test -s app/build/outputs/apk/debug/app-debug.apk` → passed (non-zero).
+- `ls -lh` → `-rw-r--r-- 1 runner runner 9.5M ... app-debug.apk`.
+- `unzip -l` → real APK contents (`classes.dex`, `AndroidManifest.xml`, resources).
+- Uploaded as artifact **`qr-payment-queue-debug-apk`** (9,482,077 bytes,
+  `if-no-files-found: error`), artifact ID `10580268112`.
 
 ## Known limitations
 
@@ -210,12 +236,13 @@ Expected: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Next task
 
-1. Observe the GitHub Actions run for the V2 commit; if it fails, read the real
-   error, fix the root cause and push again until green. Then record the run
-   URL, commit hash, test count and APK size in this file.
-2. Afterwards, consider V1.0: an optional, explicitly supported reconciliation
-   path (official bank/API integration) that can verify a payment without ever
-   automating the user's banking app.
+1. Optional/product work only from here: consider V1.0, an optional and
+   explicitly supported reconciliation path (official bank/API integration) that
+   can verify a payment without ever automating the user's banking app.
+2. If a device is available, install the artifact and walk the real flow once
+   (multi-image import → review → start → share → confirm → summary → relaunch
+   mid-queue) and record what was observed. Nothing in this file claims a
+   device run yet — only the CI build and the automated tests are observed.
 
 ## Important decisions
 
@@ -233,13 +260,22 @@ Expected: `app/build/outputs/apk/debug/app-debug.apk`
   without an explicit confirmation state.
 - The photo picker contract is used with its default item limit so a device with
   a lower picker limit can never reject the launch.
+- The merchant account scheme is identified by its EMVCo application ID rather
+  than by the tag alone, so a bill-payment block placed under tag 29 is handled
+  while unknown AIDs stay rejected as unsupported.
+- The `.gitignore` web-scaffold patterns are anchored to the repository root:
+  the previous unanchored `src/` rule silently ignored `app/src/`, which would
+  have kept every new Android source file out of a clean checkout.
 
 ## Things future agents must NOT repeat
 
 - Do **not** reintroduce any web scaffold (Vite/React/Convex/tsconfig/
   package.json/bun.lock/integrations.md/`src/`).
-- Do **not** claim a build or APK exists without CI evidence, and do not present
-  V2 as verified before the run for this commit is observed.
+- Do **not** claim a build or APK exists without CI evidence. V2 is verified by
+  run `35430531448` (commit `7dd3ed9`); any later code change needs its own green
+  run before it is described as verified.
+- Do **not** re-add an unanchored `src/` (or other bare tool-folder) ignore rule:
+  it hides `app/src/` from git and breaks a clean checkout.
 - Do **not** revert to folder selection, storage permissions or a device-wide
   scan: use the photo picker.
 - Do **not** delete or move the user's gallery originals when importing.

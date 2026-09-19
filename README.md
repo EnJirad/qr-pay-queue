@@ -178,6 +178,7 @@ Thai EMVCo merchant-presented QR payloads:
 
 - PromptPay credit transfer (tag 29, AID `A000000677010111`): mobile number, national/tax ID, e-Wallet ID
 - PromptPay / Thai QR bill payment (tag 30, AID `A000000677010112`): biller ID and references
+- The scheme is identified by the application ID inside the merchant account block, so a bill-payment block issued under tag 29 is still parsed correctly; an unknown AID, currency or country is rejected as unsupported instead of guessed at
 - Tags read: `00`, `01`, `53` (THB), `54` (amount), `58` (TH), `59`, `60`, `62`, `63` (CRC-16/CCITT-FALSE)
 
 A QR without an amount (static PromptPay) is valid and stays without an amount: the app shows no invented figure and your banking app decides what to pay.
