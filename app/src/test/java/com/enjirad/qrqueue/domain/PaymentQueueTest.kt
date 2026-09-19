@@ -174,9 +174,11 @@ class PaymentQueueTest {
     fun aHandOffThatNeverReachedKPlusDoesNotBlockTheRestOfTheQueue() {
         val failed = twoImages().startSharing("a", 10L).failItem("a", "missing", 15L)
 
-        // Nothing was paid, so the user may work on another image right away.
+        // Nothing was paid, so the user may hand another image over right away.
         assertTrue(failed.canStartHandoff("b"))
-        assertEquals(PaymentStatus.QUEUED, failed.startSharing("b", 20L).item("b")?.status)
+        val nextShared = failed.startSharing("b", 20L)
+        assertEquals(PaymentStatus.SHARING, nextShared.item("b")?.status)
+        assertEquals(PaymentStatus.FAILED, nextShared.item("a")?.status)
 
         // And the failed image can be retried by the user, going back to QUEUED.
         val retried = failed.retryItem("a", 25L)
@@ -257,10 +259,12 @@ class PaymentQueueTest {
         assertEquals(PaymentStatus.QUEUED, blocked.item("b")?.status)
         assertEquals(PaymentStatus.WAITING_USER, blocked.item("a")?.status)
 
-        // An unresolved result blocks just as firmly: retrying it is the user's job.
+        // An unresolved result blocks just as firmly: resolving it is the user's job.
         val unknown = waiting.markUnknown("a", "stopped", 30L)
         assertFalse(unknown.canStartHandoff("b"))
-        assertEquals(PaymentStatus.UNKNOWN, unknown.startSharing("b", 40L).item("b")?.status)
+        val blockedByUnknown = unknown.startSharing("b", 40L)
+        assertEquals(PaymentStatus.QUEUED, blockedByUnknown.item("b")?.status)
+        assertEquals(PaymentStatus.UNKNOWN, blockedByUnknown.item("a")?.status)
 
         // Resolving it frees the queue again.
         assertTrue(unknown.resolveUnknownCompleted("a", 50L).canStartHandoff("b"))
