@@ -167,7 +167,19 @@ object EmvCoQrParser {
                 .orEmpty(),
         )
 
-        if (promptPayBlock != null) return buildPromptPay(promptPayBlock, parts)
+        if (promptPayBlock != null) {
+            // The application ID identifies the scheme: a bill-payment block that
+            // some issuers place under tag 29 is still treated as bill payment
+            // instead of being rejected, while unknown AIDs stay unsupported.
+            val promptPayAid = parseTlv(promptPayBlock)
+                ?.firstOrNull { entry -> entry.tag == SUB_AID }
+                ?.value
+            return if (promptPayAid == BILL_PAYMENT_AID) {
+                buildBillPayment(promptPayBlock, parts)
+            } else {
+                buildPromptPay(promptPayBlock, parts)
+            }
+        }
         val billBlock = billPaymentBlock
             ?: return ParseOutcome.Rejected(
                 ValidationIssue.UNSUPPORTED_PAYLOAD,

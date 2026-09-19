@@ -21,7 +21,12 @@ class EmvCoQrParserTest {
     private val promptPayStaticWithoutAmount =
         "00020101021129370016A0000006770101110113006681234567853037645802TH5912SOMCHAI SHOP63046455"
 
+    /** Standard Thai QR bill payment: tag 30 with AID A000000677010112. */
     private val billPaymentWithAmount =
+        "00020101021230530016A000000677010112011312345678901230212REF123456789530376454071250.505802TH5923METROPOLITAN WATERWORKS6007Bangkok63042695"
+
+    /** The same scheme issued under tag 29 — handled by AID, not by tag alone. */
+    private val billPaymentIssuedUnderTag29 =
         "00020101021229530016A000000677010112011312345678901230212REF123456789530376454071250.505802TH5923METROPOLITAN WATERWORKS6007Bangkok6304544C"
 
     private val promptPayNationalId =
@@ -73,6 +78,18 @@ class EmvCoQrParserTest {
         assertEquals(QrFormat.BILL_PAYMENT, payload.format)
         assertEquals(RecipientKind.BILLER, payload.recipientKind)
         assertEquals("METROPOLITAN WATERWORKS", payload.recipient)
+        assertEquals("REF123456789", payload.reference)
+        assertEquals(125_050L, payload.amountSatang)
+    }
+
+    @Test
+    fun parsesBillPaymentIssuedUnderThePromptPayTag() {
+        val outcome = EmvCoQrParser.parse(billPaymentIssuedUnderTag29)
+        assertTrue(outcome is ParseOutcome.Accepted)
+        val payload = (outcome as ParseOutcome.Accepted).payload
+
+        assertEquals(QrFormat.BILL_PAYMENT, payload.format)
+        assertEquals(RecipientKind.BILLER, payload.recipientKind)
         assertEquals("REF123456789", payload.reference)
         assertEquals(125_050L, payload.amountSatang)
     }
