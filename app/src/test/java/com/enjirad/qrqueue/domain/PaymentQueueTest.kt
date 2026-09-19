@@ -247,9 +247,11 @@ class PaymentQueueTest {
         assertFalse(queue.finished)
         assertEquals(2, queue.currentOrdinal)
 
+        // Resolving the blocked item clears it and lets the run continue.
         val resolved = queue.resolveUnknownCompleted()
         assertEquals("c", resolved.currentItem?.id)
-        assertEquals(1, resolved.unknownCount)
+        assertEquals(0, resolved.unknownCount)
+        assertEquals(2, resolved.completedCount)
     }
 
     @Test
