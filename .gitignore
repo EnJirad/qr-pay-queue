@@ -13,8 +13,15 @@ captures/
 .DS_Store
 
 # Web-tool leftovers (must never come back into this repository)
+# This is a native Android project — no JS toolchain may be committed.
 node_modules/
 .vite/
+package.json
+package-lock.json
+bun.lock
+bun.lockb
+integrations.md
+src/
 
 # Keystores and secrets — never commit these
 *.jks

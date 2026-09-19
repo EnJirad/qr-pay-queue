@@ -13,94 +13,102 @@ QR Payment Queue — native Android application for organizing QR payment tasks.
 
 ## Current status
 
-Source complete for V0.1. The repository has been converted from the old
-web scaffold into a clean native Android Gradle project. No APK has been
-produced yet: this authoring environment has no JDK and no Android SDK, so
-Gradle cannot run here. The APK build authority is **GitHub Actions**
-(`.github/workflows/android.yml`), which runs `./gradlew assembleDebug` and
-fails if the APK is missing or empty.
+**CI/CD repair session.** The native Android project itself was untouched
+(rule: fix only what blocks CI). The GitHub Actions workflow failed twice at
+the same step before Gradle ever ran; the workflow has been rewritten to fix
+the root cause. The new run's result is **pending** — see "GitHub Actions
+result" below. Do not report the CI as green until run #3 (or later) is
+observed passing.
 
-## Completed work (V0.1)
+## Completed work (this session — CI/CD only)
 
-- Removed the entire legacy Vite/React/Convex web scaffold (see Files removed).
-- Created a native Android Gradle project (Kotlin DSL): `settings.gradle.kts`,
-  root `build.gradle.kts`, `gradle.properties`, version catalog, wrapper files.
-- Created the `:app` module: AGP 8.7.3, Kotlin 2.1.0, Compose BOM 2024.12.01,
-  compileSdk/targetSdk 35, minSdk 26, applicationId `com.enjirad.qrqueue`.
-- Created `AndroidManifest.xml` with one launcher activity and **no runtime
-  permissions** (folder access will use the Storage Access Framework in V0.2).
-- Created the V0.1 Compose UI: app header, hero card with version chip, queue
-  stats (in queue / total amount), Import QR Images button (honest
-  "not implemented in V0.2" notice), payment queue section with empty state
-  ("ยังไม่มี QR ในคิว"), and a payment-safety card.
-- Created the domain model: `PaymentStatus` (full status list from the brief,
-  error/terminal flags, `completedStates`), `QueueItem`, `formatSatang`.
-- Created `QueueViewModel` (ViewModel + StateFlow) and `QueueRoute`/`QueueScreen`.
-- Created an adaptive launcher icon (vector QR glyph, no binary assets).
-- Added unit tests: `MoneyTest`, `PaymentStatusTest`.
-- Created the GitHub Actions workflow that tests, lints, builds and verifies
-  the APK and uploads artifact `qr-payment-queue-debug-apk`.
-- Created `README.md`, `AI_RULES.md`, this file.
+- Diagnosed both failed runs from the GitHub API (see below) — not from guesses.
+- Rewrote `.github/workflows/android.yml` to fix the root cause.
+- Removed web-scaffold leftovers that had been committed to the repository.
+- Extended `.gitignore` so JS toolchain files cannot be committed again.
+- No changes to: Kotlin sources, Gradle build files, manifest, resources,
+  version catalog, wrapper. The app feature set (V0.1) is unchanged.
 
-## Architecture
+## Diagnosis (with evidence)
 
-- Single activity (`MainActivity`) hosting Jetpack Compose.
-- `ui/` → `QueueRoute` (composition with ViewModel) → `QueueScreen` (stateless UI).
-- `ui/QueueViewModel` exposes `StateFlow<QueueUiState>`; UI collects it with
-  `collectAsStateWithLifecycle`.
-- `domain/` → pure Kotlin models and helpers (`PaymentStatus`, `QueueItem`,
-  `formatSatang`), unit-testable without Android.
-- `ui/theme/` → colors, typography, `QrQueueTheme` (no dynamic color on purpose).
-- No persistence, no importer, no decoding yet — deliberately V0.1 scope.
+Repository: `EnJirad/qr-pay-queue` (public), branch `main`.
 
-## Important files
+| Run | Commit | Step failed | Duration |
+| --- | --- | --- | --- |
+| #1 id `35420781950`, job `105837947672` | `aaa66a19c6c0e72c536e84ff04d625ef1740ab49` | Step 4 "Set up Android environment" (`android-actions/setup-android@v3`) — failure after ~15 s | 23 s total |
+| #2 id `35424162034`, job `105847109924` | `f21a9f0e03bf517d105e89b6610f133f541b9d58` | Step 4 "Set up Android environment" (`android-actions/setup-android@v3`) — failure after ~6 s | 12 s total |
 
-| File | Role |
-| --- | --- |
-| `app/build.gradle.kts` | app module config (SDK levels, Compose, dependencies) |
-| `gradle/libs.versions.toml` | pinned, mutually compatible tool versions |
-| `app/src/main/AndroidManifest.xml` | single launcher activity, no permissions |
-| `app/src/main/java/com/enjirad/qrqueue/MainActivity.kt` | entry point |
-| `app/src/main/java/com/enjirad/qrqueue/ui/QueueScreen.kt` | V0.1 UI |
-| `app/src/main/java/com/enjirad/qrqueue/ui/QueueViewModel.kt` | screen state |
-| `app/src/main/java/com/enjirad/qrqueue/domain/PaymentStatus.kt` | status model |
-| `.github/workflows/android.yml` | APK build + verification + artifact |
+All later steps (SDK packages, Gradle, tests, lint, `assembleDebug`, APK
+verification, artifact upload) were **skipped** — the build never reached
+Gradle. Full step logs require sign-in (API returned 403), so the exact
+stderr text could not be captured; the diagnosis rests on the step-level
+conclusions above plus public evidence of the same class of failure.
+
+Root cause (from evidence):
+
+- Both failures occurred inside `android-actions/setup-android@v3`, not in
+  project code. Runner annotations on both jobs say the `ubuntu-latest` image
+  is migrating (Ubuntu 26, actions/runner-images#14748) and v3 (Node 20) runs
+  force-pinned on Node 24.
+- `android-actions/setup-android` issue #546 (opened 2026-09-18, one day
+  before these runs) reports the identical breakage pattern on fresh
+  images — preinstalled Android SDK pieces (build-tools) are no longer
+  guaranteed — and the collaborator's recommended fix is to use
+  `setup-android@v4` with an explicit `packages` input instead of trusting
+  image preinstalls.
+
+## Fix applied
+
+`.github/workflows/android.yml` was rewritten:
+
+1. `runs-on: ubuntu-24.04` — pin the image; stop chasing the rolling
+   `ubuntu-latest` migration.
+2. `actions/checkout@v5` and `actions/setup-java@v5` (v4 was deprecated —
+   the runner annotated this explicitly).
+3. `android-actions/setup-android@v4` **with** `packages: "platform-tools
+   platforms;android-35 build-tools;35.0.0"` — install exactly what AGP 8.7.3
+   / compileSdk 35 needs, not what the image happens to contain.
+4. Kept: JDK 17 Temurin, Gradle 8.11.1 via `gradle/actions/setup-gradle@v4`,
+   wrapper regeneration fallback, `chmod +x gradlew`.
+5. Gate order unchanged: `testDebugUnitTest` → `lintDebug` →
+   `./gradlew assembleDebug --stacktrace` → `test -f` → `test -s` →
+   `unzip -l` inspection → upload artifact `qr-payment-queue-debug-apk`
+   with `if-no-files-found: error`.
+
+## Files modified (this session)
+
+- `.github/workflows/android.yml` — rewritten as described above.
+- `.gitignore` — additionally ignores `package.json`, `package-lock.json`,
+  `bun.lock`, `bun.lockb`, `integrations.md`, `src/` (web leftovers guard).
+
+## Files removed (this session)
+
+Web-scaffold files that had been committed to git in error:
+
+- `package.json` (`@vly-ai/integrations` only)
+- `bun.lock`
+- `integrations.md` (web/integration docs)
+- `src/lib/vly-integrations.ts` (the only remaining `src/` file)
+
+**Security note:** `.env.example`, `.env.keys` and `.env.local` also existed
+in the working tree and in git history (HEAD commit `f21a9f0`). The sandbox
+blocks reading/writing `.env*` files, so they could not be deleted here.
+`.gitignore` already excludes `.env` / `.env.*`, so **future** commits will
+not include them, but `.env.keys` may contain a secret and is already in the
+public git history. **The user must rotate any value that was in `.env.keys`
+and, if desired, purge it from history (e.g. `git filter-repo`) — this agent
+could not perform either action from the sandbox.**
 
 ## Files created
 
-All Android/Gradle sources listed above, plus:
-`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.properties`,
-`.gitignore`, `README.md`, `AI_RULES.md`, `AI_HANDOFF.md`,
-`app/proguard-rules.pro`,
-`app/src/main/res/values/{strings,colors,themes}.xml`,
-`app/src/main/res/values-night/themes.xml`,
-`app/src/main/res/drawable/ic_launcher_foreground.xml`,
-`app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`,
-`app/src/test/java/com/enjirad/qrqueue/domain/{MoneyTest,PaymentStatusTest}.kt`.
-
-## Files modified
-
-- `.gitignore` — replaced web ignores with Android ignores + secret exclusions.
-- `README.md` — rewritten to describe the Android project.
-
-## Files removed
-
-The complete legacy web application (it must not be restored):
-
-- `src/` (all React/Convex/UI code), `public/`, `index.html`
-- `package.json`, `package-lock.json`, `bun.lock`, `node_modules` metadata usage
-- `vite.config.ts`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json`
-- `components.json`, `eslint.config.js`, `postcss.config.cjs`, `convex.json`
-- `main.ts`, `sst-env.d.ts`, `vly-toolbar-readonly.tsx`,
-  `.prettierignore`, `.prettierrc`, `integrations.md`
-
-`.env*` files were left untouched (managed by the user / platform, never committed).
+None this session.
 
 ## Tests performed
 
-- Unit tests authored: `MoneyTest` (5 cases), `PaymentStatusTest` (4 cases).
-- **Not executed in the authoring environment**: no JDK / Android SDK here.
-- CI runs `./gradlew testDebugUnitTest` on every push; treat that output as truth.
+- YAML sanity check on the new workflow (no tab characters; structure
+  reviewed line by line). No YAML parser was available in the sandbox.
+- **No local Gradle build was performed** — the sandbox has no JDK/Android
+  SDK. The first real compile/test run happens in Actions.
 
 ## Build command
 
@@ -110,10 +118,11 @@ The complete legacy web application (it must not be restored):
 
 ## Build result
 
-- LOCAL BUILD: **not performed** (authoring environment has no JDK/Android SDK;
-  do not claim otherwise).
-- GITHUB ACTIONS BUILD: **pending first push** — workflow is committed and will
-  run automatically on push (also on PR and manual dispatch).
+- LOCAL BUILD: **not performed / not possible** (no JDK, no Android SDK).
+- GITHUB ACTIONS BUILD (history): **FAIL** — runs #1 and #2, both at
+  `setup-android@v3` (see Diagnosis).
+- GITHUB ACTIONS BUILD (current): **PENDING** — the rewritten workflow runs
+  on the next push; observe run #3 before reporting anything.
 
 ## APK path
 
@@ -121,61 +130,70 @@ Expected: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## APK verification result
 
-**Pending.** The workflow verifies `test -f` and `test -s` (exists, size > 0),
-inspects the APK contents with `unzip -l`, and uploads artifact
-`qr-payment-queue-debug-apk` with `if-no-files-found: error`. Until a green
-Actions run is observed, the APK does not exist anywhere and must not be
-reported as built.
+**Not verified — no APK exists yet.** Verification is the CI steps
+`test -f`, `test -s`, `ls -lh`, `unzip -l` followed by artifact upload
+`qr-payment-queue-debug-apk`.
 
 ## Git commit / push result
 
-Version control in this environment is managed by the platform's Vly
-integration; the agent cannot run `git` commands here. Files are synced and
-committed by the platform. Record the real commit hash here after the next push.
+Version control is managed by the platform's Vly integration; the agent
+cannot run `git` here. Changes are synced/committed by the platform. Record
+the real commit hash of this fix here once observed, then update the
+"GitHub Actions result" section with run #3's URL, conclusion and APK size.
+
+## GitHub Actions result
+
+- Run #1 (`35420781950`): **FAIL** — step 4, `android-actions/setup-android@v3`.
+- Run #2 (`35424162034`): **FAIL** — step 4, `android-actions/setup-android@v3`.
+- Run #3 (workflow rewrite): **PENDING**.
 
 ## Known issues
 
-1. `gradle/wrapper/gradle-wrapper.jar` is a binary and may be absent from a
-   checkout. The CI workflow regenerates it (`gradle wrapper --gradle-version
-   8.11.1`) before `./gradlew assembleDebug`, and `gradlew` prints a clear
-   message if the jar is missing locally. Local CLI users run that same command
-   once (Android Studio does not need it).
-2. `local.properties` is intentionally not committed; local builds need an SDK
-   path (Android Studio writes it automatically).
-3. The V0.1 UI has no importer yet — the Import button shows an honest
-   "planned for V0.2" notice. This is by design, not a bug.
+1. The exact stderr of the `setup-android@v3` failures is behind sign-in;
+   root cause was established from step-level evidence + public issue #546.
+2. `.env.keys` (possible secret) is present in public git history — rotation
+   is the user's action item; see Security note above.
+3. `gradle/wrapper/gradle-wrapper.jar` is committed (43,583 bytes, verified
+   in the git tree), and CI additionally regenerates it defensively.
+4. V0.1 UI has no importer yet — the Import button shows an honest
+   "planned for V0.2" notice. By design, not a bug.
 
 ## Blockers
 
-None in the source. The only blocker was environmental: no JDK/Android SDK in
-the authoring sandbox, which is why GitHub Actions is the build authority.
+None in the source. The previous blocker (CI dying in `setup-android@v3`) is
+addressed by the rewritten workflow; confirmation is the pending run #3.
 
 ## Next task
 
-V0.2 — folder selection via the Android Storage Access Framework
-(`ACTION_OPEN_DOCUMENT_TREE` / `OpenDocumentTree`), no broad storage
-permissions, feeding `QueueViewModel` with discovered document URIs.
+1. Observe run #3; if it fails, open its log (signed in), read the real
+   error, fix the root cause, push again — repeat until green.
+2. Once green: record run URL, commit hash and APK size in this file.
+3. Then continue feature work: V0.2 — folder selection via the Android
+   Storage Access Framework (`ACTION_OPEN_DOCUMENT_TREE` /
+   `OpenDocumentTree`), no broad storage permissions, feeding
+   `QueueViewModel` with discovered document URIs.
 
 ## Important decisions
 
-- Kotlin + Compose + Gradle Kotlin DSL; single-activity architecture.
-- Version set pinned as a compatible group (AGP 8.7.3 / Kotlin 2.1.0 /
-  Compose BOM 2024.12.01 / Gradle 8.11.1 / JDK 17).
-- minSdk 26 so the adaptive launcher icon needs no binary PNG fallbacks.
-- `android:allowBackup="false"` — a payment utility should not back up app data.
-- No dynamic color: the brand palette is part of the product.
-- Money is a `Long` count of satang end-to-end; formatting is a single tested
-  helper (`formatSatang`).
-- Status model encodes two hard rules: never `PAID` from sharing alone, never
-  auto-retry unknown results.
+- CI fix only: no Kotlin/Gradle/manifest changes in this session (task scope).
+- Runner image pinned to `ubuntu-24.04` for determinism; can be un-pinned
+  deliberately later once the Ubuntu 26 migration settles.
+- SDK packages installed explicitly rather than trusted from the image.
+- Pinned-version set unchanged (AGP 8.7.3 / Kotlin 2.1.0 / Compose BOM
+  2024.12.01 / Gradle 8.11.1 / JDK 17).
+- Status model still encodes the hard rules: never `PAID` from sharing alone,
+  never auto-retry unknown results.
 
 ## Things future agents must NOT repeat
 
-- Do **not** reintroduce any web scaffold (Vite/React/Convex/tsconfig/package.json).
-  The previous attempt failed by building a web app in an Android project.
+- Do **not** reintroduce any web scaffold (Vite/React/Convex/tsconfig/
+  package.json/bun.lock/integrations.md/`src/`).
 - Do **not** claim a build/APK exists without CI evidence.
-- Do **not** create fake queue items, sample payments or placeholder "success"
-  states — the empty state is the honest V0.1 state.
+- Do **not** trust `ubuntu-latest` + whatever Android SDK pieces it
+  preinstalls — declare the packages you need.
+- Do **not** create fake queue items, sample payments or placeholder
+  "success" states.
 - Do **not** add storage permissions; use SAF when V0.2 lands.
-- Do **not** add bank automation, Accessibility clicking, OTP/PIN handling, or
-  any "confirm payment" automation. Ever.
+- Do **not** add bank automation, Accessibility clicking, OTP/PIN handling,
+  or any "confirm payment" automation. Ever.
+- Do **not** commit secrets; never touch `.env*` in git.
