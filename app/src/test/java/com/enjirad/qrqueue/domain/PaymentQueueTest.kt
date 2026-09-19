@@ -406,7 +406,7 @@ class PaymentQueueTest {
 
     @Test
     fun `retryShare moves AWAITING to SHARING with same QR`() {
-        val item = TestFixtures.readyItem("a", 0)
+        val item = testItem("a", 0)
         val q = PaymentQueue.create("q", 100, listOf(item))
             .startSharing("a", 200)
             .shareLaunched("a", 300)
@@ -418,7 +418,7 @@ class PaymentQueueTest {
 
     @Test
     fun `retryShare creates new PaymentAttempt`() {
-        val item = TestFixtures.readyItem("a", 0)
+        val item = testItem("a", 0)
         val q = PaymentQueue.create("q", 100, listOf(item))
             .startSharing("a", 200)
             .shareLaunched("a", 300)
@@ -429,7 +429,7 @@ class PaymentQueueTest {
 
     @Test
     fun `retryShare does not create new PaymentItem`() {
-        val item = TestFixtures.readyItem("a", 0)
+        val item = testItem("a", 0)
         val q = PaymentQueue.create("q", 100, listOf(item))
             .startSharing("a", 200)
             .shareLaunched("a", 300)
@@ -440,7 +440,7 @@ class PaymentQueueTest {
 
     @Test
     fun `retryShare does not create new QR Version`() {
-        val item = TestFixtures.readyItem("a", 0)
+        val item = testItem("a", 0)
         val q = PaymentQueue.create("q", 100, listOf(item))
             .startSharing("a", 200)
             .shareLaunched("a", 300)
@@ -451,7 +451,7 @@ class PaymentQueueTest {
 
     @Test
     fun `retryShare is no-op for READY item`() {
-        val item = TestFixtures.readyItem("a", 0)
+        val item = testItem("a", 0)
         val q = PaymentQueue.create("q", 100, listOf(item))
         val result = q.retryShare("a", 200)
         assertEquals(PaymentStatus.READY, result.item("a")!!.status)
@@ -459,7 +459,7 @@ class PaymentQueueTest {
 
     @Test
     fun `retryShare is no-op for COMPLETED item`() {
-        val item = TestFixtures.readyItem("a", 0)
+        val item = testItem("a", 0)
         val q = PaymentQueue.create("q", 100, listOf(item))
             .startSharing("a", 200)
             .shareLaunched("a", 300)
@@ -471,7 +471,7 @@ class PaymentQueueTest {
 
     @Test
     fun `multiple retries create separate attempts`() {
-        val item = TestFixtures.readyItem("a", 0)
+        val item = testItem("a", 0)
         var q = PaymentQueue.create("q", 100, listOf(item))
             .startSharing("a", 200)
             .shareLaunched("a", 300)
