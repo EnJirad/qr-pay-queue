@@ -1,6 +1,6 @@
 package com.enjirad.qrqueue.domain
 
-import com.enjirad.qrqueue.data.AppSettingsStoreTest.InMemoryAppSettingsStore
+import com.enjirad.qrqueue.data.InMemoryAppSettingsStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
