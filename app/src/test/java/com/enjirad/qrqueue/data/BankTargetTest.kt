@@ -32,7 +32,7 @@ class BankTargetTest {
 
         assertTrue(status.advertised)
         assertEquals(BankAvailability.READY, status.availability)
-        assertTrue(status.isAdvertisedShareTarget)
+        assertTrue(status.advertised)
         assertTrue(status.isInstalled)
         assertTrue(status.canHandOff)
     }
@@ -49,7 +49,7 @@ class BankTargetTest {
 
         assertFalse(status.advertised)
         assertEquals(BankAvailability.INSTALLED_NOT_ADVERTISED, status.availability)
-        assertFalse(status.isAdvertisedShareTarget)
+        assertFalse(status.advertised)
         assertTrue(status.isInstalled)
         // The hand-off button is still offered so the refusal is reported honestly.
         assertTrue(status.canHandOff)
@@ -68,7 +68,7 @@ class BankTargetTest {
         assertEquals(BankAvailability.NOT_INSTALLED, status.availability)
         assertFalse(status.isInstalled)
         assertFalse(status.canHandOff)
-        assertFalse(status.isAdvertisedShareTarget)
+        assertFalse(status.advertised)
     }
 
     @Test
