@@ -44,7 +44,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -643,8 +643,11 @@ private fun CurrentItemCard(item: QueueItem) {
 
 @Composable
 private fun QrImagePreview(path: String?) {
-    val image by produceState<ImageBitmap?>(initialValue = null, key1 = path) {
-        value = if (path.isNullOrEmpty()) {
+    // The preview is loaded off the main thread and held in plain state, so the
+    // queue screen never decodes a full-resolution screenshot on the UI thread.
+    val imageState = remember(path) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(path) {
+        imageState.value = if (path.isNullOrEmpty()) {
             null
         } else {
             withContext(Dispatchers.IO) {
@@ -665,7 +668,7 @@ private fun QrImagePreview(path: String?) {
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            val bitmap = image
+            val bitmap = imageState.value
             if (bitmap == null) {
                 Text(
                     text = stringResource(R.string.image_unavailable),
