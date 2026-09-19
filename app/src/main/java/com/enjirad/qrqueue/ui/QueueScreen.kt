@@ -31,7 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Help
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Refresh
@@ -1139,7 +1139,7 @@ private fun ActionRail(
                 Spacer(Modifier.height(16.dp))
                 ActionIconButton(
                     onClick = { callbacks.onMarkUnknown(item.id) },
-                    icon = Icons.Outlined.Help,
+                    icon = Icons.Outlined.Info,
                     contentDescription = stringResource(R.string.action_unknown),
                     tint = MaterialTheme.colorScheme.tertiary,
                 )
