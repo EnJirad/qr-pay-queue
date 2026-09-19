@@ -192,7 +192,7 @@ class PaymentQueueTest {
         val unknown = twoImages()
             .startSharing("a", 10L)
             .shareLaunched("a", 20L)
-            .markUnknown("the app stopped", 25L)
+            .markUnknown("a", "the app stopped", 25L)
 
         assertEquals(PaymentStatus.UNKNOWN, unknown.item("a")?.status)
         assertEquals("the app stopped", unknown.item("a")?.failureDetail)
@@ -204,7 +204,7 @@ class PaymentQueueTest {
 
     @Test
     fun anUnknownResultIsNeverCompletedAutomatically() {
-        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown()
+        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown("a")
 
         // The plain confirmation transition is refused while the result is unknown.
         assertEquals(PaymentStatus.UNKNOWN, unknown.confirmCompleted("a").item("a")?.status)
@@ -219,10 +219,10 @@ class PaymentQueueTest {
 
     @Test
     fun sharingCannotStartFromUnknownOrCompleted() {
-        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown()
+        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown("a")
         assertEquals(PaymentStatus.UNKNOWN, unknown.startSharing("a").item("a")?.status)
 
-        val done = oneImage().startSharing("a").shareLaunched("a").confirmCompleted()
+        val done = oneImage().startSharing("a").shareLaunched("a").confirmCompleted("a")
         assertTrue(done.finished)
         assertTrue(done.startSharing("a").finished)
         assertEquals(PaymentStatus.COMPLETED, done.startSharing("a").item("a")?.status)
@@ -236,7 +236,7 @@ class PaymentQueueTest {
         assertNull(retried.item("a")?.failureDetail)
         assertEquals(50L, retried.item("a")?.updatedAt)
 
-        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown()
+        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown("a")
         assertEquals(PaymentStatus.QUEUED, unknown.retryItem("a").item("a")?.status)
 
         // Retry is refused for an item the user has not seen fail or go unknown.
@@ -258,7 +258,7 @@ class PaymentQueueTest {
         assertEquals(PaymentStatus.WAITING_USER, blocked.item("a")?.status)
 
         // An unresolved result blocks just as firmly: retrying it is the user's job.
-        val unknown = waiting.markUnknown("stopped", 30L)
+        val unknown = waiting.markUnknown("a", "stopped", 30L)
         assertFalse(unknown.canStartHandoff("b"))
         assertEquals(PaymentStatus.UNKNOWN, unknown.startSharing("b", 40L).item("b")?.status)
 
@@ -291,7 +291,7 @@ class PaymentQueueTest {
 
     @Test
     fun anInterruptedQueueKeepsEarlierConfirmedResults() {
-        val afterFirst = twoImages().startSharing("a").shareLaunched("a").confirmCompleted()
+        val afterFirst = twoImages().startSharing("a").shareLaunched("a").confirmCompleted("a")
         assertEquals(1, afterFirst.completedCount)
 
         val restored = afterFirst.startSharing("b").shareLaunched("b").resolveInterrupted()
@@ -307,8 +307,8 @@ class PaymentQueueTest {
     @Test
     fun theQueueFinishesOnlyWhenEveryImageHasBeenConfirmed() {
         val finished = twoImages()
-            .startSharing("a").shareLaunched("a").confirmCompleted()
-            .startSharing("b").shareLaunched("b").confirmCompleted()
+            .startSharing("a").shareLaunched("a").confirmCompleted("a")
+            .startSharing("b").shareLaunched("b").confirmCompleted("b")
 
         assertTrue(finished.finished)
         assertNull(finished.handoffItem)
