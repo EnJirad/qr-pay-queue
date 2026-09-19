@@ -22,6 +22,10 @@
 | Queue state machine rules | `PaymentQueueTest`, `PaymentStatusTest` |
 | Import, persistence, completion | `QueueImportTest`, `ImportCompletionTest` |
 | Bank registry has real package names | `BankTargetTest.eachKnownBankHasAValidPackageName` |
+| Direct bank intent contract | `DirectBankIntentTest` (7 methods): ACTION_SEND, image MIME, EXTRA_STREAM content URI, read grant, setPackage target per bank, no chooser |
+| Bank selection survives restart | `SelectedBankPersistenceTest` (7 methods) |
+| Uninstalled bank disables upload | `UninstalledBankTest` (5 methods): isInstalled=false, canUpload=false, requiresBankSelection=true |
+| No Sharesheet fallback | `ShareFallbackTest` (6 methods): every non-ready outcome is an error notice; the action is never a chooser |
 
 ## Test environment (fill in when a device is available)
 

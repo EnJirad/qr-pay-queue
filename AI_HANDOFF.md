@@ -14,50 +14,60 @@ AndroidX + Material 3 + Gradle Kotlin DSL. No web technology anywhere.
 
 ## Current version
 
-0.4.2 (versionCode 6) — V0.4.2 **Bank Selection + Persistent Selected Bank +
+0.4.2 (versionCode 6) — V0.4.2 **Direct Bank Share + Persistent Bank Selection +
 Upload Gate**.
 
-## What V0.4.2 changed
-
-The user must select a banking app before importing any QR images. The selection
-is persisted via SharedPreferences so it survives every form of process death.
-The import button is disabled until a bank is selected and installed.
+## What V0.4.2 is
 
 ```
 V0.4.1:  import → queue → share to K PLUS (hardcoded) → confirm
-V0.4.2:  SELECT BANK → persist → queue → import → share to selected bank → confirm
+V0.4.2:  SELECT BANK → persist → import gate → queue → share to the selected
+         bank's package only → confirm
 ```
 
 1. **Bank selection on the home screen.** A `BankSelectionCard` at the top of
    every screen shows the current bank's status (ready / installed-not-advertised
-   / not-found / not-selected) with a button to choose or change. The card is
-   always visible so the user never loses sight of where QR images will be sent.
+   / not-found / not-selected) with a button to choose or change.
 2. **Upload gate.** `QueueUiState.canImport` is the single source of truth:
    `selectedBank != null && bankStatus?.canHandOff == true`. The import button is
-   disabled when this is false, and no toast or dialog is needed — the gate is
-   structural.
+   disabled when this is false — the gate is structural, never a toast after the
+   fact.
 3. **Bank selection dialog.** Probes every known bank on the device at dialog
-   open time (pure `BankTarget.query`). Shows radio buttons for each bank with
-   real-time status: ready (green), installed-not-advertised (red note), or
-   not-installed (greyed out).
-4. **Persistent selection.** `QueueRepository` stores `selectedBankPackage` and
-   `selectedBankId` in SharedPreferences. On init the ViewModel loads the bank
-   and re-probes it on the current device. If the bank was uninstalled since the
-   last session, the upload gate is disabled immediately and the user is told.
-5. **Generalized share flow.** `QrShare.bankShareIntent` takes `targetPackage`
-   as a parameter (no longer hardcoded to K PLUS). `ShareIntentSpec.targetPackage`
-   is part of the unit-tested contract. `BankRegistry` holds the verified package
-   names for K PLUS, SCB EASY, Krungthai NEXT, and Bualuang mBanking.
-6. **`KPlusTarget` → `BankTarget`.** The old K PLUS-only target resolution is
-   replaced by a generalized `BankTarget.classify` / `BankTarget.query` that
-   works with any `BankInfo`. The manifest `<queries>` block lists all four
-   known banking packages.
-7. **Queue and state machine unchanged.** `QUEUED → SHARING → WAITING_USER →
+   open time (`BankTarget.query`). Installed + advertising banks are selectable,
+   not-installed banks are greyed out.
+4. **Persistent selection.** `BankSelectionStore` (production:
+   `SharedPreferencesBankSelectionStore`) stores `selectedBankPackage` +
+   `selectedBankId`. On init the ViewModel loads the bank and **re-probes it on
+   the current device**. If the bank was uninstalled since the last session the
+   upload gate is disabled immediately and the user is told (V0.4.2 §12/§13). The
+   old selection is kept so the card can still show "K PLUS — ไม่พบแอป".
+5. **Direct bank share, no Sharesheet.** `QrShare.bankShareIntent` takes
+   `targetPackage` and calls `setPackage(...)`. `Intent.createChooser` is not used
+   anywhere in the app. The `ShareIntentSpec.targetPackage` field is the unit-
+   tested contract.
+6. **Target re-verification at share time.** `QueueViewModel.beginHandOff`
+   re-queries the selected bank immediately before the hand-off
+   (`BankTarget.query` → installed?) and rejects the launch through
+   `BankTarget.preflight` + `BankShareFlow.noticeFor` when there is no bank or the
+   package is gone. `QueueScreen.launchImageIntent` additionally requires
+   `intent.resolveActivity(...)` to resolve before `startActivity`, and any
+   `ActivityNotFoundException` / `SecurityException` becomes a FAILED item with an
+   error — never a chooser and never another app (V0.4.2 §9/§11/§17).
+7. **`isInstalled` and `canReceiveQrImage` are separate.** `BankTarget` exposes
+   both. "Package installed" and "advertises this share activity" answer different
+   questions on Android 11+, and an installed-but-not-advertising bank is still
+   attempted and its result reported honestly (V0.4.2 §11C/§14).
+8. **Generalized copy.** The user-visible strings no longer hardcode K PLUS:
+   the confirm panel, re-share dialog and waiting card use the selected bank's
+   display name, and `PaymentStatus.SHARING` reads "กำลังเปิดแอปธนาคาร".
+9. **Queue and state machine unchanged.** `QUEUED → SHARING → WAITING_USER →
    COMPLETED`, `FAILED`, `UNKNOWN` — the V0.4.1 state machine, per-item
-   transitions, single-hand-off rule, and confirmation flow are untouched.
+   transitions, single-hand-off rule and manual confirmation are untouched.
    Changing the selected bank does not affect queued items, their status, or
-   their share targets. The next share uses whatever bank is selected at that
-   moment.
+   their share targets; the next share uses the bank selected at that moment
+   (V0.4.2 §8/§18/§19/§20).
+
+QR decoding is **not** part of V0.4.2 and must not come back (V0.4.2 §21).
 
 ## Version history
 
@@ -68,132 +78,125 @@ V0.4.2:  SELECT BANK → persist → queue → import → share to selected bank
 | 0.3.0 | QR decoding (ZXing) + EMVCo PromptPay parsing + queue audit |
 | 0.4.0 | Image queue + K PLUS hand-off + manual user confirmation; QR decoding removed |
 | 0.4.1 | Home-screen queue, self-closing import, one-by-one direct K PLUS hand-off |
-| **0.4.2** | **Bank selection, persistent selected bank, upload gate, generalized share** |
+| **0.4.2** | **Bank selection, persistent selected bank, upload gate, direct bank share** |
 
-## Files added
+## Files added (this session)
 
-- `app/src/main/java/com/enjirad/qrqueue/domain/BankInfo.kt` — `BankInfo`,
-  `BankAvailability`, `BankTargetStatus`, and `BankRegistry` (the verified
-  candidate list of Thai banking apps).
-- `app/src/main/java/com/enjirad/qrqueue/data/BankTarget.kt` — generalized
-  `classify` (pure, unit-tested) and `query` (Android layer) for any banking
-  package.
-- `app/src/test/java/com/enjirad/qrqueue/data/BankTargetTest.kt` — bank-target
-  classification, registry lookups.
-- `app/src/test/java/com/enjirad/qrqueue/ui/UploadGateTest.kt` — the upload gate
-  and bank-selection derived state.
+- `app/src/main/java/com/enjirad/qrqueue/data/BankSelectionStore.kt` —
+  `BankSelectionStore` interface, `SharedPreferencesBankSelectionStore`, and the
+  pure `BankSelectionCodec` (id-first, package-fallback, mismatch-rejecting).
+- `app/src/test/java/com/enjirad/qrqueue/data/InMemoryBankSelectionStore.kt` —
+  test-only store backed by a map so a restart can be simulated.
+- `app/src/test/java/com/enjirad/qrqueue/data/DirectBankIntentTest.kt` (7 methods).
+- `app/src/test/java/com/enjirad/qrqueue/data/SelectedBankPersistenceTest.kt` (7 methods).
+- `app/src/test/java/com/enjirad/qrqueue/ui/UninstalledBankTest.kt` (5 methods).
+- `app/src/test/java/com/enjirad/qrqueue/ui/ShareFallbackTest.kt` (6 methods).
 
-## Files removed
+`BankInfo.kt` (from the earlier V0.4.2 work) still holds `BankInfo`,
+`BankAvailability`, `BankTargetStatus`, `BankRegistry`, and now the new
+`BankShareReadiness` enum.
 
-- `app/src/main/java/com/enjirad/qrqueue/data/KPlusTarget.kt` — replaced by
-  `BankTarget.kt`.
-- `app/src/test/java/com/enjirad/qrqueue/data/KPlusTargetTest.kt` — replaced by
-  `BankTargetTest.kt`.
+## Files changed (this session)
 
-## Files changed
-
-- `data/QrShare.kt` — `shareSpec` takes `targetPackage`; `kPlusShareIntent`
-  replaced by `bankShareIntent(context, file, mimeType, targetPackage)`.
-- `data/QueueRepository.kt` — added `saveSelectedBank`, `loadSelectedBank`,
-  `clearSelectedBank` using SharedPreferences.
-- `ui/QueueViewModel.kt` — bank state (`selectedBank`, `bankStatus`),
-  `canImport` upload gate, `isBankReady`, bank-selection handlers, bank-aware
-  `requestShare`.
-- `ui/QueueScreen.kt` — `BankSelectionCard`, `BankSelectionDialog`, disabled
-  import button, bank-aware share labels.
-- `AndroidManifest.xml` — expanded `<queries>` to cover all four known banking
-  packages.
-- `res/values/strings.xml` — V0.4.2 copy; bank-selection strings, upload-gate
-  hint, generalized bank labels (no longer K PLUS–only).
-- `app/build.gradle.kts` — `versionName = "0.4.2"`, `versionCode = 6`.
-- `.github/workflows/android.yml` — artifact `qr-payment-queue-v0.4.2-debug`.
-- `app/src/test/java/com/enjirad/qrqueue/data/ShareIntentSpecTest.kt` — updated
-  for the `targetPackage` parameter.
+- `data/BankTarget.kt` — added the pure `preflight(selectedBank, installed)`,
+  public `isInstalled(context, bank)` and `canReceiveQrImage(context, bank)`;
+  `query` now composes those two instead of duplicating the probe.
+- `data/QueueRepository.kt` — the bank selection now delegates to a
+  `BankSelectionStore` (constructor-injectable); the old SharedPreferences keys
+  moved into `BankSelectionCodec`.
+- `ui/QueueViewModel.kt` — new pure `BankShareFlow.noticeFor(...)`; the
+  `QueueNotice.SHARE_FAILED` became `SHARE_TARGET_UNAVAILABLE`; added
+  `QueueUiState.requiresBankSelection`; share and re-share now go through
+  `beginHandOff` which re-verifies the target; a failed launch reports the
+  cannot-open error instead of silently failing.
+- `ui/QueueScreen.kt` — `launchImageIntent` requires the share intent to resolve
+  before launching (no chooser fallback); the confirm panel, re-share dialog and
+  waiting card now take the selected bank name; added a `bank_generic` fallback.
+- `domain/BankInfo.kt` — added the `BankShareReadiness` enum.
+- `domain/PaymentStatus.kt` — the `SHARING` label is now "กำลังเปิดแอปธนาคาร".
+- `res/values/strings.xml` — `notice_share_failed` → `notice_share_target_unavailable`
+  (the V0.4.2 §17 wording), `confirm_body`/`reshare_dialog_title`/`waiting_body`
+  now take the bank name, added `bank_generic`.
+- `data/QrShare.kt`, `app/build.gradle.kts` — comments generalized from K PLUS to
+  the selected bank (no behavior change; the package was never in the comments).
 
 ## Dependency changes
 
-**None.** SharedPreferences is part of the Android platform. No new library
-was added or removed.
+**None.** SharedPreferences is part of the Android platform. No new library was
+added or removed.
 
 ## Tests
 
-76 JUnit 4 test methods across 8 classes, all pure JVM (no device, no emulator,
-no `@Ignore`, no new dependency):
+Pure JVM JUnit 4 (no device, no emulator, no `@Ignore`, no new dependency):
 
-- `PaymentStatusTest` (10) — status classification, hand-off ownership.
-- `PaymentQueueTest` (20) — per-item transitions, single-hand-off rule, failure
-  and unknown paths, retry, process death, counts.
-- `QueueImportTest` (12) — URI de-duplication, storage helpers, 1/3/10 imports.
-- `ImportCompletionTest` (11) — progress arithmetic, self-closing import screen,
-  import summary.
-- `ShareIntentSpecTest` (8) — the hand-off contract with `targetPackage` for
-  multiple banks; no chooser.
-- `BankTargetTest` (9) — bank classification, registry lookups, known-bank
-  validation.
-- `UploadGateTest` (6) — the upload gate: disabled without a bank, enabled when
-  installed, disabled when uninstalled; dialog state independent of import;
-  progress and queue don't affect the gate.
+- Existing 8 classes (per the last observed CI run: 76 methods) —
+  `PaymentStatusTest`, `PaymentQueueTest`, `QueueImportTest`, `ImportCompletionTest`,
+  `ShareIntentSpecTest`, `BankTargetTest`, `UploadGateTest`.
+- New this session (25 methods): `DirectBankIntentTest` (ACTION_SEND, image MIME,
+  EXTRA_STREAM content URI, read grant, setPackage target per bank, no chooser),
+  `SelectedBankPersistenceTest` (no bank → null; select K PLUS → restore after
+  restart; change bank → new one restored; clear; unknown/mismatched decode),
+  `UninstalledBankTest` (isInstalled=false, canUpload=false,
+  requiresBankSelection=true, old selection kept; pure `preflight`),
+  `ShareFallbackTest` (every non-ready outcome is an error notice; the action is
+  never a chooser).
 
 ## Build result
 
-- LOCAL BUILD: **not performed / not possible** — no JDK/SDK in this sandbox.
-- GITHUB ACTIONS: **SUCCESS** on commit `4713f68` (run `35443754450`, 2m3s).
+- LOCAL BUILD: **not performed / not possible** — this environment has no
+  JDK/SDK (`java` is not installed). Nothing below claims a local pass.
+- GITHUB ACTIONS: the workflow runs on every push; the result of the push that
+  carries this session's changes is the authority. Read the run before reporting
+  a pass.
 
 ## CI result
 
-**GREEN.** Every step of `Android CI` succeeded on commit
-`4713f68ce5ff40d7baed147835fedd48edb83db1`:
-
-- Run URL: https://github.com/EnJirad/qr-pay-queue/actions/runs/35443754450
-- `testDebugUnitTest`: **PASS** (76 test methods)
-- `lintDebug`: **PASS** (`abortOnError = true`)
-- `assembleDebug`: **PASS**
-- APK existence / non-empty / inspect: **PASS**
-- Artifact upload `qr-payment-queue-v0.4.2-debug`: **PASS**
-- Build time: 2m3s
-
-### V0.4.2 runs that failed first
-
-1. `35442759243` — **failed** `:app:compileDebugKotlin`: `BankTarget.kt` had
-   `image/*` inside a KDoc block comment, which Kotlin nests. Same class of bug
-   as V0.4.0. Fixed by rephrasing.
-2. `35443007046` — **failed** `:app:compileDebugUnitTestKotlin`: test referenced
-   `isAdvertisedShareTarget` which was removed from `BankTargetStatus` in favor
-   of the `advertised` boolean. Fixed in the test.
-3. `35443319600` — **failed** 1 unit test: `isBankReady` used `canHandOff`
-   (which is true for any installed bank), but the test expected it to be false
-   for an installed-but-not-advertised bank. Fixed `isBankReady` to require
-   `advertised == true`.
+- Previous observed run (before this session): **SUCCESS** on commit `4713f68`
+  (`35443754450`, 2m3s) — `testDebugUnitTest`, `lintDebug`, `assembleDebug`,
+  APK verification and artifact upload `qr-payment-queue-v0.4.2-debug`, all PASS.
+- This session's commit: **result not yet observed here.** Do not report CI as
+  green until the corresponding run is read.
 
 ## APK artifact
 
 - Workflow artifact name: `qr-payment-queue-v0.4.2-debug`
-- Path inside the workflow: `app/build/outputs/apk/debug/app-debug.apk`
-- Last observed V0.4.2 build (run `35443754450`): `9.2M`, `classes.dex`
-  18,137,284 bytes, `AndroidManifest.xml` 6,896 bytes (larger manifest due to
-  additional `<queries>` entries for four banking packages).
+- Path: `app/build/outputs/apk/debug/app-debug.apk`
+- Last observed size (run `35443754450`): `9.2M`.
 
 ## Real-device verification
 
-**NOT YET DONE.** No device or emulator in this environment. The bank selection
-and upload gate are unit-tested as pure logic; the real-device questions are:
-does the dialog probe correctly, does the persisted selection survive process
-death, and does the share actually open the selected bank? Plan in
-`docs/REAL_DEVICE_TEST.md`.
+**NOT DONE.** No device or emulator in this environment. The bank selection,
+upload gate and direct share are unit-tested as pure logic; the real-device
+questions are: does the dialog probe correctly, does the persisted selection
+survive process death, and does the share actually open the selected bank without
+the Android Sharesheet? Plan in `docs/REAL_DEVICE_TEST.md` (Xiaomi 15T Pro,
+Android 16). Until those runs exist the app is **REAL DEVICE VERIFICATION: NOT
+VERIFIED**.
 
 ## Known limitations
 
 1. **Bank confirmation stays manual.** Without an official supported bank
    integration the app cannot know whether a transaction completed.
-2. **Bank package names come from Google Play listings.** If a bank changes its
-   package name, the app reports it as "not found" and the user can select
-   another bank. The registry can be extended in a future version.
+2. **Package names come from Google Play listings.** If a bank changes its
+   package name the app reports it as "not found" and the user selects another.
 3. **Not all banking apps support image sharing.** `INSTALLED_NOT_ADVERTISED`
-   means the bank is installed but its share-activity was not found; the hand-off
+   means the bank is installed but its share activity was not found; the hand-off
    is still attempted and the result is reported honestly.
 4. **Changing banks does not affect queued items.** Items in WAITING_USER or
-   UNKNOWN status still reference the bank that was selected when they were
-   shared. The next share uses the current bank.
+   UNKNOWN still reference the bank selected when they were shared; the next
+   share uses the current bank.
 5. **K PLUS cannot be verified from here** — needs a real device.
 6. No instrumented UI tests; no emulator in CI.
 7. The `.env.example` / `.env.keys` web leftovers remain tracked but unused.
+
+## Things future agents must NOT repeat
+
+- Do not build a chooser fallback: `Intent.createChooser` must not exist in the
+  payment path (asserted by tests).
+- Do not treat "`queryIntentActivities` found nothing" as "the bank is not
+  installed" — installation and share-advertisement are separate states.
+- Do not clear the saved bank just because its package is missing; keep it to
+  display it, and gate use on `requiresBankSelection`.
+- Do not re-introduce a QR decoder, Accessibility automation, PIN/OTP handling,
+  or any automatic payment confirmation/retry.
+- Do not claim a build, APK or CI pass that was not observed.

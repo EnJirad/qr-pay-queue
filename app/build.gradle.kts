@@ -73,8 +73,8 @@ dependencies {
     implementation(libs.androidx.material.icons.core)
 
     // No QR decoder dependency: the app does not read QR codes. The image is
-    // handed straight to K PLUS with a package-targeted ACTION_SEND intent, and
-    // K PLUS reads it.
+    // handed straight to the selected bank with a package-targeted ACTION_SEND
+    // intent, and the bank app reads it.
 
     debugImplementation(libs.androidx.ui.tooling)
 

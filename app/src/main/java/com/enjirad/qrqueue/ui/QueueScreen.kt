@@ -168,6 +168,14 @@ private fun launchImageIntent(context: Context, request: ImageIntentRequest): Bo
         )
         ImageIntentKind.VIEW -> QrShare.viewIntent(context, file, request.mimeType)
     } ?: return false
+    // V0.4.2 §9 step 4: the selected bank must be able to resolve this intent.
+    // A bank-addressed intent is never widened to the Android chooser and never
+    // falls back to another app (§16/§17).
+    if (request.kind == ImageIntentKind.SHARE &&
+        intent.resolveActivity(context.packageManager) == null
+    ) {
+        return false
+    }
     return try {
         context.startActivity(intent)
         true
@@ -182,7 +190,7 @@ private fun launchImageIntent(context: Context, request: ImageIntentRequest): Bo
 fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
     val snackbarHostState = remember { SnackbarHostState() }
     val noticeMessage = when (state.notice) {
-        QueueNotice.SHARE_FAILED -> stringResource(R.string.notice_share_failed)
+        QueueNotice.SHARE_TARGET_UNAVAILABLE -> stringResource(R.string.notice_share_target_unavailable)
         QueueNotice.BANK_UNAVAILABLE -> stringResource(R.string.notice_bank_unavailable)
         QueueNotice.BANK_UNINSTALLED -> stringResource(R.string.notice_bank_uninstalled)
         QueueNotice.HANDOFF_IN_PROGRESS -> stringResource(R.string.notice_handoff_in_progress)
@@ -209,6 +217,7 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
 
     if (state.reShareConfirmationVisible) {
         ReShareDialog(
+            bankName = state.selectedBank?.displayName ?: stringResource(R.string.bank_generic),
             onConfirm = callbacks.onReShareConfirmed,
             onDismiss = callbacks.onReShareDismissed,
         )
@@ -835,7 +844,10 @@ private fun QueueContent(
     }
 
     if (answerItem != null && confirmationDismissedFor == answerItem.id) {
-        StillWaitingCard(item = answerItem)
+        StillWaitingCard(
+            item = answerItem,
+            bankName = selectedBank?.displayName ?: stringResource(R.string.bank_generic),
+        )
     }
 
     SectionTitle(text = stringResource(R.string.queue_list_title))
@@ -1026,7 +1038,10 @@ private fun ConfirmPaymentPanel(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = stringResource(R.string.confirm_body),
+                text = stringResource(
+                    R.string.confirm_body,
+                    selectedBank?.displayName ?: stringResource(R.string.bank_generic),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
@@ -1067,7 +1082,7 @@ private fun ConfirmPaymentPanel(
 }
 
 @Composable
-private fun StillWaitingCard(item: QueueItem) {
+private fun StillWaitingCard(item: QueueItem, bankName: String) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -1081,7 +1096,7 @@ private fun StillWaitingCard(item: QueueItem) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = stringResource(R.string.waiting_body, (item.position + 1)),
+                text = stringResource(R.string.waiting_body, (item.position + 1), bankName),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
@@ -1252,10 +1267,10 @@ private fun FinishedBanner(queue: PaymentQueue, onBackHome: () -> Unit) {
 // ---- shared pieces ----------------------------------------------------------
 
 @Composable
-private fun ReShareDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun ReShareDialog(bankName: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.reshare_dialog_title)) },
+        title = { Text(text = stringResource(R.string.reshare_dialog_title, bankName)) },
         text = { Text(text = stringResource(R.string.reshare_dialog_body)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {

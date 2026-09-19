@@ -8,13 +8,13 @@ import androidx.core.content.FileProvider
 import java.io.File
 
 /**
- * A pure description of one image hand-off to K PLUS.
+ * A pure description of one image hand-off to the selected banking app.
  *
  * Keeping the action, MIME type, target package and grant rules out of the
  * Android layer means the exact contract the app relies on (a standard
  * `ACTION_SEND`, a `content://` URI, an image MIME type, a temporary read grant,
- * and K PLUS as the only addressee) is covered by fast JVM unit tests, while
- * [QrShare] only turns the spec into a real [Intent].
+ * and the selected bank as the only addressee) is covered by fast JVM unit
+ * tests, while [QrShare] only turns the spec into a real [Intent].
  */
 data class ShareIntentSpec(
     val action: String,
@@ -22,22 +22,23 @@ data class ShareIntentSpec(
     /** The `content://` URI passed as [Intent.EXTRA_STREAM]. */
     val streamUri: String,
     val grantReadUriPermission: Boolean,
-    /** The only application this hand-off is addressed to (K PLUS). */
+    /** The only application this hand-off is addressed to (the selected bank). */
     val targetPackage: String,
 )
 
 /**
- * Android hand-off to K PLUS, and nothing more.
+ * Android hand-off to the selected banking app, and nothing more.
  *
- * The workflow fixes the destination: the user pressed "แชร์ไป K PLUS", so the
- * app addresses K PLUS directly and never opens Android's "share with..." chooser
- * first. The intent is still an ordinary `ACTION_SEND` image share — K PLUS
- * decides what it does with the image.
+ * The workflow fixes the destination: the user chose a bank and pressed
+ * "แชร์ไปธนาคาร", so the app addresses that bank's package directly and never
+ * opens Android's "share with..." chooser first (V0.4.2 §2/§16). The intent is
+ * still an ordinary `ACTION_SEND` image share — the bank decides what it does
+ * with the image.
  *
  * The app only ever hands the image over. It never types a PIN, password or OTP,
- * never touches biometric prompts, never clicks anything inside K PLUS, never
- * reads K PLUS screens and never calls a bank API. The actual payment stays with
- * the user, inside K PLUS.
+ * never touches biometric prompts, never clicks anything inside the bank app,
+ * never reads bank screens and never calls a bank API. The actual payment stays
+ * with the user, inside the bank app.
  *
  * The image is always shared through `FileProvider` as a `content://` URI with a
  * temporary read grant — never a `file://` URI, which banking apps cannot read

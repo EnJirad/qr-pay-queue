@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import com.enjirad.qrqueue.domain.BankAvailability
 import com.enjirad.qrqueue.domain.BankInfo
+import com.enjirad.qrqueue.domain.BankShareReadiness
 import com.enjirad.qrqueue.domain.BankTargetStatus
 
 /**
@@ -18,6 +19,24 @@ object BankTarget {
 
     const val IMAGE_MIME_PREFIX = "image/"
     const val ANY_IMAGE_MIME_TYPE = "image/*"
+
+    /**
+     * The pure part of the share gate: decides whether a hand-off may be
+     * attempted from the two facts known without touching Android — whether a
+     * bank is selected, and whether its package is installed.
+     *
+     * "Installed" is checked separately from "can receive this intent": an
+     * installed bank whose share activity is hidden is still attempted, so it is
+     * [BankShareReadiness.READY] here and the launch result is reported honestly.
+     */
+    fun preflight(
+        selectedBank: BankInfo?,
+        installed: Boolean,
+    ): BankShareReadiness = when {
+        selectedBank == null -> BankShareReadiness.NO_BANK_SELECTED
+        !installed -> BankShareReadiness.BANK_NOT_INSTALLED
+        else -> BankShareReadiness.READY
+    }
 
     /**
      * Decides what the app may do for one bank and one image.
@@ -54,12 +73,12 @@ object BankTarget {
      * launching it.
      */
     fun query(context: Context, bank: BankInfo): BankTargetStatus {
-        val installed = isInstalled(context, bank.name)
-        val advertisedDeclared = installed && handles(context, bank.name, ANY_IMAGE_MIME_TYPE)
+        val installed = isInstalled(context, bank)
+        val advertised = installed && canReceiveQrImage(context, bank)
         return classify(
             declaredMimeType = null,
             advertisedForDeclaredType = false,
-            advertisedForAnyImage = advertisedDeclared,
+            advertisedForAnyImage = advertised,
             installed = installed,
             bank = bank,
         )
@@ -68,6 +87,10 @@ object BankTarget {
     /**
      * True when the bank's package has an activity that can receive the exact
      * intent the app builds: a standard image share, addressed to that package.
+     *
+     * This is NOT the same question as [isInstalled]. A bank can be installed and
+     * still not advertise the share activity; the app must not report that as
+     * "not installed".
      */
     private fun handles(context: Context, packageName: String, mimeType: String): Boolean =
         runCatching {
@@ -78,6 +101,19 @@ object BankTarget {
                 .queryIntentActivities(probe, PackageManager.MATCH_DEFAULT_ONLY)
                 .any { resolveInfo -> resolveInfo.activityInfo?.packageName == packageName }
         }.getOrDefault(false)
+
+    /** True when the bank's package is present on this device. */
+    fun isInstalled(context: Context, bank: BankInfo): Boolean =
+        isInstalled(context, bank.name)
+
+    /**
+     * True when the bank advertises an activity for the exact image share intent
+     * the app builds. Separate from [isInstalled] on purpose: Android 11+
+     * package-visibility rules and per-build share activities mean the two answer
+     * different questions.
+     */
+    fun canReceiveQrImage(context: Context, bank: BankInfo): Boolean =
+        handles(context, bank.name, ANY_IMAGE_MIME_TYPE)
 
     private fun isInstalled(context: Context, packageName: String): Boolean = runCatching {
         context.packageManager.getPackageInfo(packageName, 0)

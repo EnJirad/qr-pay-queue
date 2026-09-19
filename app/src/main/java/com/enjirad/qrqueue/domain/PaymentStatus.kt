@@ -29,8 +29,8 @@ enum class PaymentStatus(val label: String) {
     /** Imported into the queue, not handed to K PLUS yet. */
     QUEUED("รอทำรายการ"),
 
-    /** Being handed to K PLUS right now. */
-    SHARING("กำลังเปิด K PLUS"),
+    /** Being handed to the selected bank right now. */
+    SHARING("กำลังเปิดแอปธนาคาร"),
 
     /** Handed to K PLUS; waiting for the user to pay and confirm. */
     WAITING_USER("รอการยืนยัน"),

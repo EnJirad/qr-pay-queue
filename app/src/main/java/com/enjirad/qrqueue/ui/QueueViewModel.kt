@@ -7,6 +7,7 @@ import com.enjirad.qrqueue.data.BankTarget
 import com.enjirad.qrqueue.data.QueueRepository
 import com.enjirad.qrqueue.domain.BankInfo
 import com.enjirad.qrqueue.domain.BankRegistry
+import com.enjirad.qrqueue.domain.BankShareReadiness
 import com.enjirad.qrqueue.domain.BankTargetStatus
 import com.enjirad.qrqueue.domain.ImportProgress
 import com.enjirad.qrqueue.domain.ImportSummary
@@ -29,7 +30,7 @@ import kotlinx.coroutines.withContext
 
 /** One-off messages the screen should surface to the user. */
 enum class QueueNotice {
-    SHARE_FAILED,
+    SHARE_TARGET_UNAVAILABLE,
     BANK_UNAVAILABLE,
     HANDOFF_IN_PROGRESS,
     VIEW_TARGET_UNAVAILABLE,
@@ -37,6 +38,23 @@ enum class QueueNotice {
     QUEUE_NOT_SAVED,
     QUEUE_CLEARED,
     BANK_UNINSTALLED,
+}
+
+/**
+ * Maps the pre-flight/share outcome onto the notice the screen must show.
+ *
+ * Pure and unit-tested so it is explicit that a failed hand-off never turns into
+ * the Android chooser or another app: every non-[BankShareReadiness.READY]
+ * outcome becomes an error message instead.
+ */
+object BankShareFlow {
+
+    fun noticeFor(readiness: BankShareReadiness): QueueNotice? = when (readiness) {
+        BankShareReadiness.NO_BANK_SELECTED -> QueueNotice.BANK_UNAVAILABLE
+        BankShareReadiness.BANK_NOT_INSTALLED -> QueueNotice.BANK_UNINSTALLED
+        BankShareReadiness.TARGET_UNRESOLVABLE -> QueueNotice.SHARE_TARGET_UNAVAILABLE
+        BankShareReadiness.READY -> null
+    }
 }
 
 /** Which external app the queue is about to hand the stored image to. */
@@ -96,6 +114,15 @@ data class QueueUiState(
     /** True when the bank is installed and advertises image sharing. */
     val isBankReady: Boolean
         get() = bankStatus?.advertised == true
+
+    /**
+     * True when the user must (re)select a bank before importing or sharing:
+     * either nothing is selected yet, or the selected package is not installed
+     * on this device any more (V0.4.2 §12/§13). The previous selection is kept
+     * so the card can still show "K PLUS — ไม่พบแอป".
+     */
+    val requiresBankSelection: Boolean
+        get() = selectedBank == null || bankStatus?.isInstalled != true
 }
 
 /**
@@ -258,10 +285,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.imageIntent != null) return
         val queue = _uiState.value.queue ?: return
         val item = queue.item(itemId) ?: return
-        // A bank must be selected and the target must be reachable.
+        // V0.4.2 §9 step 1: without a selected target nothing is shared.
         val bank = _uiState.value.selectedBank
-        val bankStatus = _uiState.value.bankStatus
-        if (bank == null || bankStatus == null || !bankStatus.canHandOff) {
+        if (bank == null) {
             _uiState.update { it.copy(notice = QueueNotice.BANK_UNAVAILABLE) }
             return
         }
@@ -274,7 +300,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             !queue.canStartHandoff(itemId) ->
                 _uiState.update { it.copy(notice = QueueNotice.HANDOFF_IN_PROGRESS) }
 
-            else -> requestShare(item, bank)
+            else -> beginHandOff(item, bank)
         }
     }
 
@@ -284,6 +310,24 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val item = _uiState.value.queue?.item(itemId) ?: return
         if (item.status != PaymentStatus.WAITING_USER) return
         val bank = _uiState.value.selectedBank ?: return
+        beginHandOff(item, bank)
+    }
+
+    /**
+     * V0.4.2 §9/§11/§17: re-verify the selected bank on the device immediately
+     * before the hand-off. If the package is gone or no target can be reached the
+     * user is told and nothing is launched — the Android chooser is never used as
+     * a fallback, and another app is never opened instead.
+     */
+    private fun beginHandOff(item: QueueItem, bank: BankInfo) {
+        val status = BankTarget.query(getApplication(), bank)
+        _uiState.update { it.copy(bankStatus = status) }
+        val readiness = BankTarget.preflight(bank, status.isInstalled)
+        val notice = BankShareFlow.noticeFor(readiness)
+        if (notice != null) {
+            _uiState.update { it.copy(notice = notice) }
+            return
+        }
         requestShare(item, bank)
     }
 
@@ -345,7 +389,12 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         if (launched) {
             updateQueue { queue -> queue.shareLaunched(itemId, System.currentTimeMillis()) }
         } else {
-            failItem(itemId, SHARE_FAILED_DETAIL, QueueNotice.SHARE_FAILED)
+            // The bank could not be opened: no resolving activity, or launch
+            // threw. Never fall back to the Android chooser or another app
+            // (V0.4.2 §17).
+            BankShareFlow.noticeFor(BankShareReadiness.TARGET_UNRESOLVABLE)?.let { notice ->
+                failItem(itemId, SHARE_FAILED_DETAIL, notice)
+            }
         }
     }
 

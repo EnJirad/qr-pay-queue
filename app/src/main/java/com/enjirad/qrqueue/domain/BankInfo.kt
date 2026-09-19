@@ -20,6 +20,30 @@ enum class BankAvailability {
 }
 
 /**
+ * Whether a direct bank hand-off may be attempted, decided from the facts the app
+ * already knows before it builds the intent.
+ *
+ * This is the pure part of the V0.4.2 share gate:
+ *
+ * - [NO_BANK_SELECTED] — the user has not chosen a bank; ask them to select one.
+ * - [BANK_NOT_INSTALLED] — the selected bank's package is gone; ask for a new one.
+ * - [TARGET_UNRESOLVABLE] — the package is installed but no activity accepts the
+ *   image share right now (checked on the device just before launching).
+ * - [READY] — the hand-off may be launched.
+ *
+ * A bank that is installed but does not advertise an image share is **not**
+ * reported as missing: the hand-off is attempted and a failure is reported
+ * honestly (see AI_HANDOFF.md). "Installed" and "can receive this intent" are
+ * deliberately separate states.
+ */
+enum class BankShareReadiness {
+    READY,
+    NO_BANK_SELECTED,
+    BANK_NOT_INSTALLED,
+    TARGET_UNRESOLVABLE,
+}
+
+/**
  * One banking app the user may choose as the payment hand-off destination.
  *
  * @param id a short, stable key for this bank (never shown to the user; used in

@@ -117,6 +117,11 @@ Intent.ACTION_SEND + EXTRA_STREAM + image MIME + setPackage(selectedBank)
 Bank app (opens directly)
 ```
 
+The app re-checks the selected bank on the device right before launch: the
+package must still be installed and the intent must resolve to it. If it cannot
+be opened, the item is marked `FAILED` with an explanation — the app **never**
+falls back to Android's "share with…" chooser and never opens another app.
+
 While the hand-off is launching the item is `SHARING`; once the bank received it
 the item becomes `WAITING_USER`.
 
@@ -243,7 +248,9 @@ test, lint run or build fails the workflow.
 
 ## Verification status
 
-- Build, 76 unit tests, lint and the APK are verified in CI on every push.
+- Build, unit tests, lint and the APK are verified in CI on every push
+  (including the direct-share contract, persistence, upload gate and fallback
+  tests).
 - Bank selection, upload gate and share flow are **NOT YET VERIFIED ON A REAL
   DEVICE**. The test plan is in
   [`docs/REAL_DEVICE_TEST.md`](docs/REAL_DEVICE_TEST.md).
