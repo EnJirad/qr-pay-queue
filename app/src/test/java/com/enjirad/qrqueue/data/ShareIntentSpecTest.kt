@@ -1,15 +1,16 @@
 package com.enjirad.qrqueue.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The hand-off contract (standard ACTION_SEND, a `content://` URI, an image MIME
- * type, and a temporary read grant) is built by the pure [QrShare.shareSpec], so
- * it is asserted here without a device. The Android [android.content.Intent] is
- * only assembled from this spec.
+ * The hand-off contract (a standard ACTION_SEND, a `content://` URI, an image MIME
+ * type, a temporary read grant, and K PLUS as the only addressee) is built by the
+ * pure [QrShare.shareSpec], so it is asserted here without a device. The Android
+ * [android.content.Intent] is only assembled from this spec.
  */
 class ShareIntentSpecTest {
 
@@ -25,6 +26,24 @@ class ShareIntentSpecTest {
         assertEquals("image/png", spec?.mimeType)
         assertEquals(contentUri, spec?.streamUri)
         assertTrue(spec?.grantReadUriPermission == true)
+    }
+
+    @Test
+    fun theHandOffIsAddressedToKPlusOnly() {
+        val spec = QrShare.shareSpec(contentUri, "image/png")
+
+        assertEquals("com.kasikornbank.kplus", spec?.targetPackage)
+        assertEquals(QrShare.K_PLUS_PACKAGE, spec?.targetPackage)
+        assertEquals(KPlusTarget.K_PLUS_PACKAGE, spec?.targetPackage)
+        // Addressed to one package, so Android opens K PLUS directly.
+        assertEquals(QrShare.ACTION_SEND, spec?.action)
+    }
+
+    @Test
+    fun noChooserIsEverBuilt() {
+        assertEquals("android.intent.action.CHOOSER", QrShare.ACTION_CHOOSER)
+        assertNotEquals(QrShare.ACTION_CHOOSER, QrShare.shareSpec(contentUri, "image/png")?.action)
+        assertNotEquals(QrShare.ACTION_CHOOSER, QrShare.shareSpec(contentUri, null)?.action)
     }
 
     @Test

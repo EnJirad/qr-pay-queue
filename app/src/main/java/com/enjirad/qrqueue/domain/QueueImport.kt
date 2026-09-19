@@ -3,13 +3,64 @@ package com.enjirad.qrqueue.domain
 import java.util.UUID
 
 /**
+ * Progress of a multi-image import, in images.
+ *
+ * `processed` counts every selected image the app has finished with — copied or
+ * failed — and `total` is how many the user selected, so the progress screen can
+ * say "3 / 5" and reaches "5 / 5" exactly once.
+ */
+data class ImportProgress(val processed: Int, val total: Int) {
+
+    /** 1 image, 3 images or 10 images: any count the picker allows. */
+    val fraction: Float
+        get() = if (total <= 0) 0f else (processed.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+
+    /** True once every selected image has been processed. */
+    val isComplete: Boolean get() = processed >= total
+
+    /** The state after one more selected image has been handled. */
+    fun advance(): ImportProgress = copy(processed = (processed + 1).coerceAtMost(total))
+
+    companion object {
+        fun of(total: Int): ImportProgress = ImportProgress(processed = 0, total = total)
+    }
+}
+
+/**
+ * What one import run actually did, so the app can report it honestly instead of
+ * only reporting success.
+ */
+data class ImportSummary(val imported: Int, val failed: Int) {
+
+    /** How many images the user selected for this run. */
+    val selected: Int get() = imported + failed
+
+    /** True when nothing the user selected was left behind. */
+    val allImported: Boolean get() = failed == 0
+
+    /** True when at least one selected image could not be copied into the app. */
+    val hasFailures: Boolean get() = failed > 0
+}
+
+/**
  * Pure helpers for the multi-image import step: selected-URI de-duplication,
- * storage file naming and turning one successfully copied image into a queue
- * item. Nothing here reads or inspects the image content.
+ * storage file naming, turning one successfully copied image into a queue item,
+ * and the progress/again reporting. Nothing here reads or inspects image content.
  */
 object QueueImport {
 
     private val SUPPORTED_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "gif", "heic", "heif", "bmp")
+
+    /**
+     * Whether the import screen must still be shown.
+     *
+     * The progress screen exists only while images are still being processed, so
+     * the app returns to the queue by itself as soon as the last selected image
+     * has been handled. It must never stay on a completed "5 / 5" step and never
+     * wait for a Continue, Done or Next tap.
+     */
+    fun isImportRunning(progress: ImportProgress?): Boolean =
+        progress != null && !progress.isComplete
 
     /**
      * Drops blank entries and repeated URIs while keeping the user's selection
@@ -54,7 +105,7 @@ object QueueImport {
         "gif" -> "image/gif"
         "heic", "heif" -> "image/heic"
         "bmp" -> "image/bmp"
-        else -> "image/*"
+        else -> ANY_IMAGE_MIME_TYPE
     }
 
     /**
@@ -83,4 +134,7 @@ object QueueImport {
     )
 
     private const val DEFAULT_EXTENSION = "img"
+
+    /** The generic image type, used when an image has no usable declared type. */
+    const val ANY_IMAGE_MIME_TYPE = "image/*"
 }

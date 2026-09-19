@@ -7,10 +7,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The queue state machine is the heart of V0.4, so every rule from the brief is
- * asserted here: the happy path, the failure path, the unknown path, that only
- * the user's own confirmation completes an item, and that UNKNOWN never advances
- * or completes on its own.
+ * The queue state machine is the heart of the app, so every rule from the brief
+ * is asserted here: the happy path, the failure path, the unknown path, that only
+ * the user's own confirmation completes an item, that UNKNOWN never advances or
+ * completes on its own, and that only one image can be in K PLUS at a time.
  */
 class PaymentQueueTest {
 
@@ -34,6 +34,12 @@ class PaymentQueueTest {
         items = listOf(item("a", 0), item("b", 1)),
     )
 
+    private fun oneImage(): PaymentQueue = PaymentQueue.create(
+        queueId = "queue-1",
+        createdAt = 1_000L,
+        items = listOf(item("a", 0)),
+    )
+
     // ---- order --------------------------------------------------------------
 
     @Test
@@ -46,9 +52,9 @@ class PaymentQueueTest {
 
         assertEquals(listOf("a", "b", "c"), queue.items.map { it.id })
         assertEquals(listOf(0, 1, 2), queue.items.map { it.position })
-        assertEquals("a", queue.currentItem?.id)
         assertEquals(3, queue.itemCount)
         assertEquals(3, queue.nextPosition)
+        assertEquals(PaymentQueue.FIRST_POSITION, 0)
     }
 
     @Test
@@ -75,7 +81,8 @@ class PaymentQueueTest {
     fun anEmptyQueueIsNeverFinished() {
         val empty = PaymentQueue.create("queue-1", 1_000L)
 
-        assertNull(empty.currentItem)
+        assertNull(empty.handoffItem)
+        assertNull(empty.awaitingAnswerItem)
         assertFalse(empty.finished)
         assertFalse(empty.normalized().finished)
     }
@@ -84,60 +91,98 @@ class PaymentQueueTest {
 
     @Test
     fun theHappyPathQueuedSharingWaitingThenCompleted() {
-        val queue = twoImages()
-            .startSharing(10L)
-        assertEquals(PaymentStatus.SHARING, queue.currentItem?.status)
+        val sharing = twoImages().startSharing("a", 10L)
+        assertEquals(PaymentStatus.SHARING, sharing.item("a")?.status)
+        assertEquals("a", sharing.handoffItem?.id)
 
-        val waiting = queue.shareLaunched(20L)
-        assertEquals(PaymentStatus.WAITING_USER, waiting.currentItem?.status)
+        val waiting = sharing.shareLaunched("a", 20L)
+        assertEquals(PaymentStatus.WAITING_USER, waiting.item("a")?.status)
         assertEquals(0, waiting.completedCount)
+        assertEquals("a", waiting.awaitingAnswerItem?.id)
 
-        val completed = waiting.confirmCompleted(30L)
-        assertEquals(PaymentStatus.COMPLETED, completed.items[0].status)
-        assertEquals(30L, completed.items[0].updatedAt)
+        val completed = waiting.confirmCompleted("a", 30L)
+        assertEquals(PaymentStatus.COMPLETED, completed.item("a")?.status)
+        assertEquals(30L, completed.item("a")?.updatedAt)
         assertEquals(1, completed.completedCount)
-        // The next image becomes the current one, ready to be shared.
-        assertEquals("b", completed.currentItem?.id)
-        assertEquals(PaymentStatus.QUEUED, completed.currentItem?.status)
         assertEquals(1, completed.remainingCount)
+        assertNull(completed.awaitingAnswerItem)
+        // The next image is available, and nothing is shared by itself.
+        assertTrue(completed.canStartHandoff("b"))
+        assertEquals(PaymentStatus.QUEUED, completed.item("b")?.status)
         assertFalse(completed.finished)
     }
 
     @Test
     fun anItemIsCompletedOnlyAfterTheUserIsAsked() {
-        assertEquals(0, twoImages().confirmCompleted().completedCount)
-        assertEquals(0, twoImages().startSharing().confirmCompleted().completedCount)
-        // Only WAITING_USER answers the user's confirmation prompt.
+        assertEquals(0, twoImages().confirmCompleted("a").completedCount)
+        assertEquals(0, twoImages().startSharing("a").confirmCompleted("a").completedCount)
+        // Only a WAITING_USER item answers the user's confirmation prompt.
         assertEquals(
             1,
-            twoImages().startSharing().shareLaunched().confirmCompleted().completedCount,
+            twoImages().startSharing("a").shareLaunched("a").confirmCompleted("a").completedCount,
         )
     }
 
     @Test
-    fun theUserSayingNotYetKeepsTheItemAndDoesNotAdvance() {
-        val waiting = twoImages().startSharing(10L).shareLaunched(20L)
+    fun theUserCanWorkTheQueueInAnyOrder() {
+        // Pay the second image first: the user picks the image, not the app.
+        val waiting = twoImages().startSharing("b", 10L).shareLaunched("b", 20L)
 
-        val notYet = waiting.confirmNotCompleted(40L)
+        assertEquals("b", waiting.handoffItem?.id)
+        assertEquals(PaymentStatus.WAITING_USER, waiting.item("b")?.status)
+        assertEquals(PaymentStatus.QUEUED, waiting.item("a")?.status)
+        assertFalse(waiting.canStartHandoff("a"))
 
-        assertEquals("a", notYet.currentItem?.id)
-        assertEquals(PaymentStatus.WAITING_USER, notYet.currentItem?.status)
-        assertEquals(0, notYet.completedCount)
-        assertEquals(40L, notYet.currentItem?.updatedAt)
-        assertFalse(notYet.finished)
+        val answered = waiting.confirmCompleted("b", 30L)
+        assertEquals(PaymentStatus.COMPLETED, answered.item("b")?.status)
+        assertEquals(PaymentStatus.QUEUED, answered.item("a")?.status)
+        assertTrue(answered.canStartHandoff("a"))
+    }
+
+    @Test
+    fun theUserSayingTryAgainKeepsTheItemAndDoesNotAdvance() {
+        val waiting = twoImages().startSharing("a", 10L).shareLaunched("a", 20L)
+
+        val kept = waiting.keepWaiting("a", 40L)
+
+        assertEquals("a", kept.handoffItem?.id)
+        assertEquals(PaymentStatus.WAITING_USER, kept.item("a")?.status)
+        assertEquals(40L, kept.item("a")?.updatedAt)
+        assertEquals(0, kept.completedCount)
+        assertFalse(kept.canStartHandoff("b"))
+        assertFalse(kept.finished)
+
+        // Trying to "try again" an item that was never handed off does nothing.
+        assertEquals(0L, twoImages().keepWaiting("a").item("a")?.updatedAt)
     }
 
     // ---- failure path -------------------------------------------------------
 
     @Test
     fun theFailurePathQueuedSharingThenFailed() {
-        val failed = twoImages().startSharing(10L).failCurrent("the file is missing", 15L)
+        val failed = twoImages().startSharing("a", 10L).failItem("a", "the file is missing", 15L)
 
-        assertEquals(PaymentStatus.FAILED, failed.currentItem?.status)
-        assertEquals("the file is missing", failed.currentItem?.failureDetail)
+        assertEquals(PaymentStatus.FAILED, failed.item("a")?.status)
+        assertEquals("the file is missing", failed.item("a")?.failureDetail)
+        assertEquals(15L, failed.item("a")?.updatedAt)
         assertEquals(1, failed.failedCount)
         assertEquals(0, failed.completedCount)
         assertFalse(failed.finished)
+    }
+
+    @Test
+    fun aHandOffThatNeverReachedKPlusDoesNotBlockTheRestOfTheQueue() {
+        val failed = twoImages().startSharing("a", 10L).failItem("a", "missing", 15L)
+
+        // Nothing was paid, so the user may work on another image right away.
+        assertTrue(failed.canStartHandoff("b"))
+        assertEquals(PaymentStatus.QUEUED, failed.startSharing("b", 20L).item("b")?.status)
+
+        // And the failed image can be retried by the user, going back to QUEUED.
+        val retried = failed.retryItem("a", 25L)
+        assertEquals(PaymentStatus.QUEUED, retried.item("a")?.status)
+        assertNull(retried.item("a")?.failureDetail)
+        assertEquals(0, retried.failedCount)
     }
 
     // ---- unknown path -------------------------------------------------------
@@ -145,124 +190,129 @@ class PaymentQueueTest {
     @Test
     fun theUnknownPathQueuedSharingWaitingThenUnknown() {
         val unknown = twoImages()
-            .startSharing(10L)
-            .shareLaunched(20L)
+            .startSharing("a", 10L)
+            .shareLaunched("a", 20L)
             .markUnknown("the app stopped", 25L)
 
-        assertEquals(PaymentStatus.UNKNOWN, unknown.currentItem?.status)
+        assertEquals(PaymentStatus.UNKNOWN, unknown.item("a")?.status)
+        assertEquals("the app stopped", unknown.item("a")?.failureDetail)
         assertEquals(1, unknown.unknownCount)
         assertEquals(0, unknown.completedCount)
+        assertEquals("a", unknown.unknownItem?.id)
         assertFalse(unknown.finished)
     }
 
     @Test
     fun anUnknownResultIsNeverCompletedAutomatically() {
-        val unknown = twoImages().startSharing().shareLaunched().markUnknown()
+        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown()
 
         // The plain confirmation transition is refused while the result is unknown.
-        assertEquals(PaymentStatus.UNKNOWN, unknown.confirmCompleted().currentItem?.status)
-        assertEquals(0, unknown.confirmCompleted().completedCount)
+        assertEquals(PaymentStatus.UNKNOWN, unknown.confirmCompleted("a").item("a")?.status)
+        assertEquals(0, unknown.confirmCompleted("a").completedCount)
         assertFalse(unknown.finished)
 
         // Only an explicit resolution by the user completes it.
-        val resolved = unknown.resolveUnknownCompleted(99L)
-        assertEquals(PaymentStatus.COMPLETED, resolved.items[0].status)
+        val resolved = unknown.resolveUnknownCompleted("a", 99L)
+        assertEquals(PaymentStatus.COMPLETED, resolved.item("a")?.status)
         assertEquals(1, resolved.completedCount)
     }
 
     @Test
     fun sharingCannotStartFromUnknownOrCompleted() {
-        val unknown = twoImages().startSharing().shareLaunched().markUnknown()
-        assertEquals(PaymentStatus.UNKNOWN, unknown.startSharing().currentItem?.status)
+        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown()
+        assertEquals(PaymentStatus.UNKNOWN, unknown.startSharing("a").item("a")?.status)
 
-        val single = PaymentQueue.create("queue-1", 1_000L, listOf(item("a", 0)))
-        val done = single.startSharing().shareLaunched().confirmCompleted()
+        val done = oneImage().startSharing("a").shareLaunched("a").confirmCompleted()
         assertTrue(done.finished)
-        assertNull(done.currentItem)
-        assertTrue(done.startSharing().finished)
+        assertTrue(done.startSharing("a").finished)
+        assertEquals(PaymentStatus.COMPLETED, done.startSharing("a").item("a")?.status)
     }
 
     @Test
     fun aFailedOrUnknownItemIsRetriedOnlyOnRequest() {
-        val failed = twoImages().startSharing().failCurrent("boom")
-        val retried = failed.retryCurrent(50L)
-        assertEquals(PaymentStatus.QUEUED, retried.currentItem?.status)
-        assertNull(retried.currentItem?.failureDetail)
-        assertEquals(0, retried.failedCount)
+        val failed = twoImages().startSharing("a").failItem("a", "boom")
+        val retried = failed.retryItem("a", 50L)
+        assertEquals(PaymentStatus.QUEUED, retried.item("a")?.status)
+        assertNull(retried.item("a")?.failureDetail)
+        assertEquals(50L, retried.item("a")?.updatedAt)
 
-        val unknown = twoImages().startSharing().shareLaunched().markUnknown()
-        assertEquals(PaymentStatus.QUEUED, unknown.retryCurrent().currentItem?.status)
+        val unknown = twoImages().startSharing("a").shareLaunched("a").markUnknown()
+        assertEquals(PaymentStatus.QUEUED, unknown.retryItem("a").item("a")?.status)
 
-        // Retry is refused for an item the user has not seen fail.
-        assertEquals(PaymentStatus.QUEUED, twoImages().retryCurrent().currentItem?.status)
-        val waiting = twoImages().startSharing().shareLaunched()
-        assertEquals(PaymentStatus.WAITING_USER, waiting.retryCurrent().currentItem?.status)
+        // Retry is refused for an item the user has not seen fail or go unknown.
+        assertEquals(PaymentStatus.QUEUED, twoImages().retryItem("a").item("a")?.status)
+        assertEquals(0L, twoImages().retryItem("a").item("a")?.updatedAt)
+        val waiting = twoImages().startSharing("a").shareLaunched("a")
+        assertEquals(PaymentStatus.WAITING_USER, waiting.retryItem("a").item("a")?.status)
+    }
+
+    // ---- one hand-off at a time ---------------------------------------------
+
+    @Test
+    fun onlyOneImageCanBeInKPlusAtATime() {
+        val waiting = twoImages().startSharing("a", 10L).shareLaunched("a", 20L)
+
+        assertFalse(waiting.canStartHandoff("b"))
+        val blocked = waiting.startSharing("b", 30L)
+        assertEquals(PaymentStatus.QUEUED, blocked.item("b")?.status)
+        assertEquals(PaymentStatus.WAITING_USER, blocked.item("a")?.status)
+
+        // An unresolved result blocks just as firmly: retrying it is the user's job.
+        val unknown = waiting.markUnknown("stopped", 30L)
+        assertFalse(unknown.canStartHandoff("b"))
+        assertEquals(PaymentStatus.UNKNOWN, unknown.startSharing("b", 40L).item("b")?.status)
+
+        // Resolving it frees the queue again.
+        assertTrue(unknown.resolveUnknownCompleted("a", 50L).canStartHandoff("b"))
+        assertTrue(unknown.retryItem("a", 50L).canStartHandoff("b"))
     }
 
     // ---- process death ------------------------------------------------------
 
     @Test
     fun anInterruptedHandOffBecomesUnknownOnRestore() {
-        val restored = twoImages().startSharing(10L).resolveInterrupted("app stopped", 60L)
+        val restored = twoImages().startSharing("a", 10L).resolveInterrupted("app stopped", 60L)
 
-        assertEquals(PaymentStatus.UNKNOWN, restored.currentItem?.status)
-        assertEquals("app stopped", restored.currentItem?.failureDetail)
+        assertEquals(PaymentStatus.UNKNOWN, restored.item("a")?.status)
+        assertEquals("app stopped", restored.item("a")?.failureDetail)
+        assertEquals(60L, restored.item("a")?.updatedAt)
         assertEquals(0, restored.completedCount)
+        assertFalse(restored.canStartHandoff("b"))
     }
 
     @Test
     fun anInterruptedWaitingItemAlsoComesBackAsUnknown() {
-        val restored = twoImages().startSharing().shareLaunched().resolveInterrupted()
+        val restored = twoImages().startSharing("a").shareLaunched("a").resolveInterrupted()
 
-        assertEquals(PaymentStatus.UNKNOWN, restored.currentItem?.status)
+        assertEquals(PaymentStatus.UNKNOWN, restored.item("a")?.status)
         assertEquals(0, restored.completedCount)
         assertFalse(restored.finished)
     }
 
     @Test
     fun anInterruptedQueueKeepsEarlierConfirmedResults() {
-        val afterFirst = twoImages().startSharing().shareLaunched().confirmCompleted()
-        val restored = afterFirst.startSharing().shareLaunched().resolveInterrupted()
+        val afterFirst = twoImages().startSharing("a").shareLaunched("a").confirmCompleted()
+        assertEquals(1, afterFirst.completedCount)
+
+        val restored = afterFirst.startSharing("b").shareLaunched("b").resolveInterrupted()
 
         assertEquals(1, restored.completedCount)
-        assertEquals("b", restored.currentItem?.id)
-        assertEquals(PaymentStatus.UNKNOWN, restored.currentItem?.status)
+        assertEquals("b", restored.unknownItem?.id)
+        assertFalse(restored.canStartHandoff("b"))
+        assertEquals(PaymentStatus.COMPLETED, restored.item("a")?.status)
     }
 
-    // ---- blocking and completion --------------------------------------------
-
-    @Test
-    fun aBlockedItemStopsTheQueueInsteadOfBeingSkipped() {
-        val queue = PaymentQueue.create(
-            queueId = "queue-1",
-            createdAt = 1_000L,
-            items = listOf(
-                item("a", 0, PaymentStatus.COMPLETED),
-                item("b", 1, PaymentStatus.UNKNOWN),
-                item("c", 2, PaymentStatus.QUEUED),
-            ),
-        )
-
-        assertEquals("b", queue.currentItem?.id)
-        assertFalse(queue.finished)
-        assertEquals(2, queue.currentOrdinal)
-
-        // Resolving the blocked item clears it and lets the run continue.
-        val resolved = queue.resolveUnknownCompleted()
-        assertEquals("c", resolved.currentItem?.id)
-        assertEquals(0, resolved.unknownCount)
-        assertEquals(2, resolved.completedCount)
-    }
+    // ---- completion and counts ---------------------------------------------
 
     @Test
     fun theQueueFinishesOnlyWhenEveryImageHasBeenConfirmed() {
         val finished = twoImages()
-            .startSharing().shareLaunched().confirmCompleted()
-            .startSharing().shareLaunched().confirmCompleted()
+            .startSharing("a").shareLaunched("a").confirmCompleted()
+            .startSharing("b").shareLaunched("b").confirmCompleted()
 
         assertTrue(finished.finished)
-        assertNull(finished.currentItem)
-        assertEquals(PaymentQueue.NO_CURRENT_ITEM, finished.currentIndex)
+        assertNull(finished.handoffItem)
+        assertNull(finished.awaitingAnswerItem)
         assertEquals(2, finished.completedCount)
         assertEquals(0, finished.remainingCount)
         assertEquals(1f, finished.progressFraction, 0.0001f)
@@ -289,5 +339,9 @@ class PaymentQueueTest {
         assertEquals(1, queue.queuedCount)
         assertEquals(4, queue.remainingCount)
         assertEquals(0.2f, queue.progressFraction, 0.0001f)
+        assertEquals("b", queue.handoffItem?.id)
+        assertEquals("b", queue.awaitingAnswerItem?.id)
+        assertEquals("d", queue.unknownItem?.id)
+        assertFalse(queue.finished)
     }
 }

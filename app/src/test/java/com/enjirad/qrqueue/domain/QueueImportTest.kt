@@ -109,7 +109,8 @@ class QueueImportTest {
 
         assertEquals(1, queue.itemCount)
         assertEquals(listOf(0), queue.items.map { it.position })
-        assertEquals(PaymentStatus.QUEUED, queue.currentItem?.status)
+        assertEquals(PaymentStatus.QUEUED, queue.items.first().status)
+        assertTrue(queue.canStartHandoff(queue.items.first().id))
     }
 
     @Test
@@ -136,8 +137,10 @@ class QueueImportTest {
         assertEquals(10, queue.itemCount)
         assertEquals((0..9).toList(), queue.items.map { it.position })
         assertEquals(10, queue.nextPosition)
-        assertEquals("1", queue.currentItem?.sourceUri?.substringAfterLast('/'))
+        assertEquals("1", queue.items.first().sourceUri.substringAfterLast('/'))
         assertTrue(queue.items.all { it.status == PaymentStatus.QUEUED })
+        // Every imported image is offered to the user, one at a time.
+        assertTrue(queue.items.all { queue.canStartHandoff(it.id) })
     }
 
     @Test

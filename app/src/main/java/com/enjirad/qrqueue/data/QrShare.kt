@@ -8,12 +8,13 @@ import androidx.core.content.FileProvider
 import java.io.File
 
 /**
- * A pure description of one image hand-off.
+ * A pure description of one image hand-off to K PLUS.
  *
- * Keeping the action / MIME / grant rules out of the Android layer means the
- * exact contract the app relies on (standard `ACTION_SEND`, a `content://` URI,
- * an image MIME type, a temporary read grant) is covered by fast JVM unit tests,
- * while [QrShare] only turns the spec into a real [Intent].
+ * Keeping the action, MIME type, target package and grant rules out of the
+ * Android layer means the exact contract the app relies on (a standard
+ * `ACTION_SEND`, a `content://` URI, an image MIME type, a temporary read grant,
+ * and K PLUS as the only addressee) is covered by fast JVM unit tests, while
+ * [QrShare] only turns the spec into a real [Intent].
  */
 data class ShareIntentSpec(
     val action: String,
@@ -21,15 +22,22 @@ data class ShareIntentSpec(
     /** The `content://` URI passed as [Intent.EXTRA_STREAM]. */
     val streamUri: String,
     val grantReadUriPermission: Boolean,
+    /** The only application this hand-off is addressed to (K PLUS). */
+    val targetPackage: String,
 )
 
 /**
- * Android hand-off to another application, and nothing more.
+ * Android hand-off to K PLUS, and nothing more.
  *
- * The app only ever hands the image to the app the user picks (or opens it in a
- * viewer). It never types a PIN, password or OTP, never touches biometric
- * prompts, never clicks anything inside a banking app and never calls a bank
- * API. The actual payment stays with the user, inside K PLUS.
+ * The workflow fixes the destination: the user pressed "แชร์ไป K PLUS", so the
+ * app addresses K PLUS directly and never opens Android's "share with..." chooser
+ * first. The intent is still an ordinary `ACTION_SEND` image share — K PLUS
+ * decides what it does with the image.
+ *
+ * The app only ever hands the image over. It never types a PIN, password or OTP,
+ * never touches biometric prompts, never clicks anything inside K PLUS, never
+ * reads K PLUS screens and never calls a bank API. The actual payment stays with
+ * the user, inside K PLUS.
  *
  * The image is always shared through `FileProvider` as a `content://` URI with a
  * temporary read grant — never a `file://` URI, which banking apps cannot read
@@ -43,18 +51,24 @@ object QrShare {
     /** URI extra name; pinned so it can be unit tested. */
     const val EXTRA_STREAM = "android.intent.extra.STREAM"
 
+    /** The chooser action, used only to assert that a chooser is never built. */
+    const val ACTION_CHOOSER = "android.intent.action.CHOOSER"
+
     const val IMAGE_MIME_PREFIX = "image/"
     const val ANY_IMAGE_MIME_TYPE = "image/*"
     const val CONTENT_URI_PREFIX = "content://"
+
+    /** K PLUS, the one and only destination of a payment hand-off. */
+    const val K_PLUS_PACKAGE = "com.kasikornbank.kplus"
 
     /**
      * Builds the hand-off description, or null when the image has no usable
      * `content://` URI.
      *
-     * Only a real `content://` URI (from `FileProvider`) is accepted: a
-     * `file://` URI would be rejected by the receiving banking app. A missing or
-     * non-image MIME type falls back to the generic image wildcard type, which
-     * every image-capable share target advertises.
+     * Only a real `content://` URI (from `FileProvider`) is accepted: a `file://`
+     * URI would be rejected by the receiving banking app. A missing or non-image
+     * MIME type falls back to the generic image type, which image-capable
+     * receivers advertise.
      */
     fun shareSpec(contentUri: String?, mimeType: String?): ShareIntentSpec? {
         val uri = contentUri?.trim().orEmpty()
@@ -67,25 +81,34 @@ object QrShare {
             mimeType = type,
             streamUri = uri,
             grantReadUriPermission = true,
+            targetPackage = K_PLUS_PACKAGE,
         )
     }
 
-    /** Chooser that hands the QR image to a banking or gallery app. */
-    fun shareIntent(context: Context, file: File, mimeType: String, chooserTitle: String): Intent? {
+    /**
+     * The direct hand-off to K PLUS.
+     *
+     * The intent is addressed to K PLUS by package, so Android opens K PLUS
+     * straight away and the user never has to pick an app. If K PLUS cannot
+     * receive it, the launch fails with `ActivityNotFoundException` and the item
+     * is recorded as [com.enjirad.qrqueue.domain.PaymentStatus.FAILED] — the app
+     * does not fall back to a chooser and does not invent a workaround.
+     *
+     * @return null when the image has no shareable `content://` URI.
+     */
+    fun kPlusShareIntent(context: Context, file: File, mimeType: String): Intent? {
         val uri = contentUri(context, file) ?: return null
         val spec = shareSpec(uri.toString(), mimeType) ?: return null
-        val send = Intent(spec.action).apply {
+        return Intent(spec.action).apply {
             type = spec.mimeType
             putExtra(EXTRA_STREAM, uri)
+            // Direct hand-off: only K PLUS is addressed, so no chooser is shown.
+            setPackage(spec.targetPackage)
             if (spec.grantReadUriPermission) addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        return Intent.createChooser(send, chooserTitle).apply {
-            // The chooser forwards the read grant to whichever app the user picks.
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (context !is Activity) {
                 // Needed only when there is no activity task to launch into; from
-                // our own activity the chooser stays in this task, so returning
-                // from the banking app lands back on the queue.
+                // our own activity K PLUS opens from this task, so returning from
+                // it lands back on the queue.
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         }

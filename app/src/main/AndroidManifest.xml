@@ -11,10 +11,10 @@
     -->
 
     <!--
-      Package visibility (Android 11+): the app must be able to ask which apps
-      can receive a shared QR image, otherwise the share sheet check would report
-      an empty list and mislead the user. This grants no permissions and exposes
-      no data.
+      Package visibility (Android 11+): the app must be able to ask whether
+      K PLUS can receive the image it is about to hand over. Without this the
+      platform hides other apps and the check would report "not found" on a
+      device that has K PLUS. This grants no permissions and exposes no data.
     -->
     <queries>
         <intent>
@@ -43,9 +43,9 @@
         </activity>
 
         <!--
-          Shares only the app-private queue image copies with the app the user
-          picks. Exported=false plus grantUriPermissions means no other app can
-          read them without an explicit, per-use grant.
+          Shares only the app-private queue image copies with K PLUS.
+          Exported=false plus grantUriPermissions means no other app can read
+          them without an explicit, per-use grant.
         -->
         <provider
             android:name="androidx.core.content.FileProvider"

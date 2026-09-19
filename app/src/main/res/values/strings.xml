@@ -2,98 +2,91 @@
     <string name="app_name">QR Payment Queue</string>
 
     <string name="screen_title">QR Payment Queue</string>
-    <string name="screen_subtitle">จัดคิวภาพ QR แล้วส่งต่อให้ K PLUS ทีละใบ</string>
-    <string name="screen_description">Import one or more QR screenshots, queue them, and hand each image to K PLUS through the Android share sheet. This app does not read the QR code — K PLUS does. You check the recipient and amount inside K PLUS and you confirm when a payment is done.</string>
-    <string name="version_chip">v0.4.0 · image queue + K PLUS handoff</string>
+    <string name="screen_subtitle">จัดคิวภาพ QR แล้วส่งให้ K PLUS ทีละรูป</string>
+    <string name="screen_description">เลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
+    <string name="version_chip">v0.4.1 · image queue + direct K PLUS handoff</string>
 
     <!-- home -->
-    <string name="home_empty_title">No queue yet</string>
-    <string name="home_empty_body">Import QR screenshots to build a queue. Each image is copied into the app; the app never reads the QR and never pays anything.</string>
+    <string name="home_empty_title">ยังไม่มีรายการในคิว</string>
+    <string name="home_empty_body">กดปุ่มด้านบนเพื่อเลือกรูป QR ที่ต้องการทำรายการ รูปจะถูกคัดลอกเข้าแอป และรูปต้นฉบับในคลังภาพจะไม่ถูกแก้ไข</string>
 
-    <string name="action_import">Import QR images</string>
-    <string name="action_import_hint">Select one or more QR screenshots. They are copied into the app, and your original gallery images are never modified.</string>
-    <string name="action_import_more">Import more images</string>
-    <string name="action_clear_queue">Clear queue</string>
-    <string name="action_new_queue">Clear queue and start over</string>
-    <string name="action_cancel">Cancel</string>
+    <string name="action_import">+ เพิ่มรูป QR</string>
+    <string name="action_import_hint">เลือกได้หลายรูปพร้อมกัน (1 รูป, 3 รูป, 10 รูป) ระบบจะนำเข้ารูปทั้งหมดแล้วกลับมาหน้าแรกอัตโนมัติ</string>
+    <string name="action_import_more">เพิ่มรูป QR</string>
+    <string name="action_clear_queue">ล้างคิว</string>
+    <string name="action_cancel">ยกเลิก</string>
+    <string name="action_dismiss">ปิด</string>
+    <string name="action_back_home">กลับหน้าแรก</string>
 
     <!-- queue -->
-    <string name="queue_section_title">Image queue</string>
-    <string name="queue_badge_count">%1$d images</string>
-    <string name="stat_completed">Completed</string>
-    <string name="stat_remaining">Remaining</string>
-    <string name="processing_title">Image %1$d / %2$d</string>
-    <string name="item_current_label">CURRENT</string>
-    <string name="label_image">Image</string>
-    <string name="label_position">Position</string>
-    <string name="label_status">Status</string>
-    <string name="image_unavailable">This image can not be shown.</string>
+    <string name="queue_section_title">สรุปคิว</string>
+    <string name="queue_list_title">รูปทั้งหมดในคิว</string>
+    <string name="queue_badge_count">%1$d รูป</string>
+    <string name="stat_total">รายการทั้งหมด</string>
+    <string name="stat_completed">เสร็จแล้ว</string>
+    <string name="stat_remaining">เหลือ</string>
+    <string name="item_completed_note">ทำรายการแล้ว และจะไม่ถูกส่งไป K PLUS อีก</string>
+    <string name="item_sharing_hint">กำลังเปิด K PLUS…</string>
+    <string name="item_unknown_hint">ต้องตรวจสอบผลใน K PLUS ก่อน จึงจะทำรายการอื่นได้</string>
+    <string name="image_unavailable">ไม่สามารถแสดงรูปนี้ได้</string>
 
     <!-- hand-off -->
-    <string name="action_share">Share image to K PLUS</string>
-    <string name="action_view_image">Open image in another app</string>
-    <string name="action_try_again">Try again</string>
-    <string name="action_retry">Not done — retry</string>
-    <string name="action_reshare">Share again</string>
+    <string name="action_share">แชร์ไป K PLUS</string>
+    <string name="action_view_image">ดูรูป</string>
+    <string name="action_confirm_completed">ทำรายการเสร็จแล้ว</string>
+    <string name="action_try_again">ลองอีกครั้ง</string>
 
-    <string name="queued_title">Ready to hand off</string>
-    <string name="queued_body">Share this image, choose K PLUS, then complete the payment there. This app never confirms anything for you.</string>
-    <string name="sharing_title">Opening the share sheet</string>
-    <string name="sharing_body">Handing this image to the Android share system. Choose K PLUS there to read the QR.</string>
+    <string name="share_blocked_note">มีรายการที่กำลังรอการยืนยันหรือรอตรวจสอบผลอยู่ ต้องจัดการรายการนั้นให้จบก่อน จึงจะเริ่มรายการถัดไปได้</string>
+    <string name="share_kplus_not_installed_note">ไม่พบแอป K PLUS บนเครื่องนี้ จึงยังส่งรูปไปให้ K PLUS ไม่ได้</string>
+    <string name="share_kplus_not_advertised_note">K PLUS ไม่ได้ประกาศรับรูปภาพไว้ ระบบจะลองส่งให้อยู่ แต่ถ้าไม่สำเร็จจะแจ้งว่า K PLUS ไม่รับรูปนี้</string>
 
     <!-- user confirmation -->
-    <string name="confirm_question">ทำรายการสำหรับภาพนี้เสร็จแล้วหรือยัง? · Have you completed this payment?</string>
-    <string name="confirm_body">Open K PLUS, check the recipient and amount, and complete the payment there. Only you can confirm the result — returning to this app is not a payment.</string>
-    <string name="action_confirm_completed">ทำรายการเสร็จแล้ว</string>
-    <string name="not_now">ยังไม่เสร็จ</string>
-    <string name="waiting_title">ยังไม่ได้ทำรายการ · Still waiting for you</string>
-    <string name="waiting_body">This image stays current and the queue does not move on. You can share it again when you are ready.</string>
+    <string name="confirm_question">ทำรายการสำหรับรูปนี้เสร็จแล้วหรือยัง?</string>
+    <string name="confirm_body">กลับมาแล้ว ตรวจสอบใน K PLUS ว่ารายการเสร็จสมบูรณ์แล้วหรือยัง การกลับมาที่แอปนี้ไม่ถือว่าจ่ายเงินสำเร็จ</string>
+    <string name="waiting_title">ยังไม่ได้ทำรายการสำหรับรูปนี้</string>
+    <string name="waiting_body">รูปที่ %1$d ยังอยู่ในคิวและยังไม่ถูกปิดรายการ กด แชร์ไป K PLUS อีกครั้งเมื่อพร้อม ระบบจะไม่ส่งซ้ำให้เอง</string>
 
     <!-- failed / unknown -->
-    <string name="failed_title">This image could not be handed off</string>
-    <string name="failed_body">Nothing was shared, and nothing was recorded as paid. You can try again.</string>
-    <string name="unknown_title">Payment result unknown</string>
-    <string name="unknown_body">This image was being handed off when the app stopped, so the payment result is not known. Check K PLUS, then record what actually happened.</string>
-    <string name="unknown_note">This is never retried or completed automatically, so you can not pay it twice by accident.</string>
+    <string name="unknown_title">ไม่ทราบผลการทำรายการ</string>
+    <string name="unknown_body">รูปนี้ถูกส่งไป K PLUS แล้ว แต่แอปถูกปิดระหว่างทำรายการ จึงไม่ทราบว่าเสร็จหรือยัง ให้ตรวจสอบใน K PLUS แล้วบันทึกผลตามจริง</string>
+    <string name="unknown_note">ระบบจะไม่ลองซ้ำและไม่ปิดรายการให้อัตโนมัติ เพื่อป้องกันการจ่ายซ้ำ</string>
 
-    <!-- summary -->
-    <string name="summary_title">Queue complete</string>
-    <string name="summary_body">Every item below was confirmed by you. The app never reads the QR or decides a payment result.</string>
-    <string name="summary_images">Images in this queue</string>
-    <string name="summary_completed">Completed by you</string>
+    <!-- finished -->
+    <string name="finished_title">ทำรายการครบแล้ว</string>
+    <string name="finished_count">%1$d / %2$d รายการเสร็จสิ้น</string>
+    <string name="finished_body">ทุกรูปในคิวได้รับการยืนยันจากคุณแล้ว แอปไม่ได้อ่าน QR และไม่ได้ตัดสินผลการชำระเงินแทนคุณ</string>
 
-    <!-- import progress -->
-    <string name="import_progress_title">Importing images</string>
-    <string name="import_progress_text">%1$d of %2$d</string>
-    <string name="import_progress_hint">Copying each selected image into the app. The QR is not read.</string>
-
-    <!-- share availability -->
-    <string name="share_no_target_note">No app on this device can receive a shared image, so sharing is disabled for this item. Install K PLUS or another banking app that accepts images.</string>
-    <string name="share_kplus_not_installed_note">K PLUS was not found on this device, so it will not appear in the share sheet. You can still share this image to another app, or install K PLUS.</string>
-    <string name="share_kplus_not_share_target_note">K PLUS is installed but does not appear as an image share target, so Android may not list it in the share sheet. You can still open K PLUS and use its own QR feature.</string>
+    <!-- import -->
+    <string name="import_progress_title">กำลังนำเข้ารูปภาพ</string>
+    <string name="import_progress_text">%1$d / %2$d</string>
+    <string name="import_progress_hint">กำลังคัดลอกรูปเข้าแอป ไม่มีการอ่าน QR</string>
+    <string name="import_summary_ok_title">นำเข้ารูปครบแล้ว</string>
+    <string name="import_summary_ok_body">นำเข้าสำเร็จ %1$d จาก %2$d รูป เลือกทำรายการทีละรูปได้เลย</string>
+    <string name="import_summary_partial_title">นำเข้าได้ %1$d จาก %2$d รูป</string>
+    <string name="import_summary_partial_body">มี %1$d รูปที่นำเข้าไม่สำเร็จ และไม่ถูกเพิ่มเข้าคิว</string>
 
     <!-- dialogs -->
-    <string name="reshare_dialog_title">Share this image again?</string>
-    <string name="reshare_dialog_body">This image was already handed to the share sheet, so it may already have been paid. Sharing it again could lead to paying the same bill twice. Continue only if you are sure the first attempt did not go through.</string>
-    <string name="reshare_dialog_confirm">Share again</string>
-    <string name="clear_dialog_title">Clear this queue?</string>
-    <string name="clear_dialog_body">This removes the queue and the imported image copies inside the app. Your original gallery images are not touched.</string>
-    <string name="clear_dialog_confirm">Clear queue</string>
+    <string name="reshare_dialog_title">รูปนี้ถูกส่งไป K PLUS แล้ว</string>
+    <string name="reshare_dialog_body">หากคุณยังไม่ได้ทำรายการ สามารถลองอีกครั้งได้ การส่งซ้ำอาจทำให้จ่ายซ้ำอีกรอบถ้ารายการแรกสำเร็จไปแล้ว</string>
+    <string name="reshare_dialog_confirm">ลองส่งอีกครั้ง</string>
+    <string name="clear_dialog_title">ล้างคิวนี้?</string>
+    <string name="clear_dialog_body">ระบบจะลบคิวและสำเนารูปที่แอปนำเข้าไว้ รูปต้นฉบับในคลังภาพของคุณจะไม่ถูกแตะต้อง</string>
+    <string name="clear_dialog_confirm">ล้างคิว</string>
 
     <!-- notices -->
-    <string name="notice_images_not_imported">Some selected images could not be copied into the app, so they were not added to the queue.</string>
-    <string name="notice_share_failed">The share sheet could not be opened. Nothing was recorded as paid; you can try again.</string>
-    <string name="notice_share_target_unavailable">No app on this device can receive a shared image. Install K PLUS or another banking app that accepts images. Nothing was recorded as paid.</string>
-    <string name="notice_view_target_unavailable">No app on this device could open the image.</string>
-    <string name="notice_image_missing">The imported image file is missing from this device, so it can not be shared.</string>
-    <string name="notice_queue_not_saved">This change could not be saved to this device. Check free storage space; your last change may not survive a restart.</string>
-    <string name="notice_queue_cleared">Queue cleared.</string>
+    <string name="notice_share_failed">K PLUS ไม่รับรูปที่ส่งไป (ไม่พบกิจกรรมที่รองรับ) จึงยังไม่ได้เริ่มรายการนี้ ลองใหม่อีกครั้งได้</string>
+    <string name="notice_k_plus_unavailable">ไม่พบแอป K PLUS บนเครื่องนี้ จึงยังส่งรูปไปให้ K PLUS ไม่ได้</string>
+    <string name="notice_handoff_in_progress">มีรายการที่กำลังรอการยืนยันหรือรอตรวจสอบผลอยู่ ต้องจัดการรายการนั้นให้จบก่อน</string>
+    <string name="notice_view_target_unavailable">ไม่มีแอปใดเปิดรูปนี้ได้</string>
+    <string name="notice_image_missing">ไม่พบไฟล์รูปที่นำเข้าไว้ในเครื่อง จึงส่งรูปนี้ไม่ได้</string>
+    <string name="notice_queue_not_saved">บันทึกการเปลี่ยนแปลงลงเครื่องไม่สำเร็จ ตรวจสอบพื้นที่ว่างของคุณ ผลล่าสุดอาจไม่ถูกเก็บไว้</string>
+    <string name="notice_queue_cleared">ล้างคิวแล้ว</string>
 
     <!-- safety -->
-    <string name="processing_safety_caption">QR Payment Queue never reads or validates the QR code, never enters a PIN, password, OTP or biometric, and never confirms a payment inside your banking app.</string>
+    <string name="processing_safety_caption">แอปนี้ไม่อ่านหรือตรวจสอบ QR ไม่กรอก PIN รหัสผ่าน OTP หรือไบโอเมตริก และไม่ยืนยันการชำระเงินในแอปธนาคารแทนคุณ</string>
 
-    <string name="safety_title">You stay in control of every payment</string>
-    <string name="safety_body">QR Payment Queue only copies, queues and shares QR images. It does not read or validate the QR code, never enters a PIN, password, OTP or biometric, never touches bank security screens, and never marks a payment as paid on its own.</string>
+    <string name="safety_title">คุณเป็นผู้ควบคุมทุกการชำระเงิน</string>
+    <string name="safety_body">QR Payment Queue เพียงคัดลอก จัดคิว และส่งต่อรูป QR ไปให้ K PLUS เท่านั้น ไม่ได้อ่านหรือตรวจสอบ QR ไม่กรอก PIN รหัสผ่าน OTP หรือไบโอเมตริก ไม่แตะหน้าจอความปลอดภัยของธนาคาร และไม่ปิดรายการให้เองโดยที่คุณยังไม่ยืนยัน</string>
 
-    <string name="status_pipeline_caption">Queue states: QUEUED → SHARING → WAITING_USER → COMPLETED (FAILED / UNKNOWN stop the queue for you)</string>
+    <string name="status_pipeline_caption">สถานะในคิว: QUEUED → SHARING → WAITING_USER → COMPLETED (FAILED / UNKNOWN หยุดรอให้คุณตัดสินใจ)</string>
 </resources>

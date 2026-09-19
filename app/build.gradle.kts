@@ -14,8 +14,8 @@ android {
         applicationId = "com.enjirad.qrqueue"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.4.1"
     }
 
     buildTypes {
@@ -72,8 +72,9 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.core)
 
-    // No QR decoder dependency: V0.4 does not read QR codes. The image is handed
-    // to K PLUS through Android's own share sheet, and K PLUS reads it.
+    // No QR decoder dependency: the app does not read QR codes. The image is
+    // handed straight to K PLUS with a package-targeted ACTION_SEND intent, and
+    // K PLUS reads it.
 
     debugImplementation(libs.androidx.ui.tooling)
 
