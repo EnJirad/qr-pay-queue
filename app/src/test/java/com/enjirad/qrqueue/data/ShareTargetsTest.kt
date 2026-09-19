@@ -101,6 +101,21 @@ class ShareTargetsTest {
     }
 
     @Test
+    fun aNonImageHandlerDoesNotMakeKPlusAnImageShareTarget() {
+        // K PLUS may handle other types (e.g. statements); that must not be
+        // mistaken for being able to receive a QR image.
+        val status = ShareTargets.classify(
+            declaredMimeType = "application/pdf",
+            targetsForDeclaredType = setOf(kPlus),
+            targetsForAnyImage = setOf("com.android.gallery"),
+            installedKPlusPackages = setOf(kPlus),
+        )
+
+        assertEquals(KPlusAvailability.INSTALLED_NOT_SHARE_TARGET, status.kPlus)
+        assertEquals(1, status.imageTargetCount)
+    }
+
+    @Test
     fun kPlusInstalledWithoutAShareFilterIsReportedHonestly() {
         val status = ShareTargets.classify(
             declaredMimeType = "image/png",

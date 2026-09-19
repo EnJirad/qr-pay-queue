@@ -59,13 +59,17 @@ object ShareTargets {
         targetsForAnyImage: Set<String>,
         installedKPlusPackages: Set<String>,
     ): ShareTargetStatus {
+        // This app only ever shares images, so when the declared type is not an
+        // image its targets are irrelevant and must not count or influence the
+        // decision (a PDF reader is not a QR share target).
         val declared = declaredMimeType?.takeIf { it.startsWith("image/") }
+        val targetsForDeclared = if (declared == null) emptySet() else targetsForDeclaredType
         val shareMimeType = when {
-            declared != null && targetsForDeclaredType.isNotEmpty() -> declared
+            declared != null && targetsForDeclared.isNotEmpty() -> declared
             targetsForAnyImage.isNotEmpty() -> ANY_IMAGE_MIME_TYPE
             else -> null
         }
-        val allTargets = targetsForDeclaredType + targetsForAnyImage
+        val allTargets = targetsForDeclared + targetsForAnyImage
         val kPlus = when {
             installedKPlusPackages.isEmpty() -> KPlusAvailability.NOT_INSTALLED
             installedKPlusPackages.any { packageName -> packageName in allTargets } ->

@@ -89,7 +89,12 @@ Found and fixed, ordered by how much damage the issue could do in production.
    one is still in flight, and any item that is not `READY` requires an explicit
    **Share again** confirmation with a double-payment warning
    (`ReShareDialog`, `QueueViewModel.onShareQrRequested`).
-3. **An empty share sheet was unexplained (fixed, medium).** Nothing checked
+3. **An empty share sheet was unexplained (fixed, medium).** Caught again by the
+   new tests themselves: the first version of `ShareTargets.classify` counted
+   targets for a non-image declared type (a PDF reader) and could have described
+   K PLUS as a QR image share target when it only handles other types. The
+   classification now ignores anything that is not an image share target.
+   Nothing checked
    whether any app could receive the image, and package visibility on Android 11+
    would have hidden the answer anyway. Now the app probes the resolver (with
    `<queries>`), disables sharing when no app can receive an image, offers to open
