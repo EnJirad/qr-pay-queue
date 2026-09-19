@@ -1,0 +1,7 @@
+<resources>
+    <!--
+      Minimal platform theme: Compose (see ui/theme/Theme.kt) owns the real
+      styling. This theme only covers the window before the first frame.
+    -->
+    <style name="Theme.QrQueue" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

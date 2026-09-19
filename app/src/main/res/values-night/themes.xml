@@ -1,0 +1,4 @@
+<resources>
+    <!-- Dark counterpart of Theme.QrQueue (see values/themes.xml). -->
+    <style name="Theme.QrQueue" parent="android:Theme.Material.NoActionBar" />
+</resources>

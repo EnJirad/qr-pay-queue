@@ -1,4 +1,24 @@
-.env.local
-node_modules
-dist
-src/convex/_generated
+# Gradle / Android build output
+.gradle/
+build/
+app/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Web-tool leftovers (must never come back into this repository)
+node_modules/
+.vite/
+
+# Keystores and secrets — never commit these
+*.jks
+*.keystore
+keystore.properties
+.env
+.env.*

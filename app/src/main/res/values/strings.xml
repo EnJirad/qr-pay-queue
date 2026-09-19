@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">QR Payment Queue</string>
+
+    <string name="screen_title">QR Payment Queue</string>
+    <string name="screen_subtitle">จัดการคิวชำระเงินจาก QR Code อย่างเป็นระบบ</string>
+    <string name="screen_description">Review, verify and confirm PromptPay QR payments one at a time. Import a folder of QR images, work through the queue, and keep the final confirmation in your own banking app.</string>
+    <string name="version_chip">v0.1.0 · foundation</string>
+
+    <string name="stat_in_queue">In queue</string>
+    <string name="stat_total_amount">Total amount</string>
+
+    <string name="action_import">Import QR Images</string>
+    <string name="action_import_hint">Folder selection via the Android Storage Access Framework arrives in V0.2 — not implemented yet.</string>
+    <string name="import_planned_notice">Image import is planned for V0.2 and is not implemented in this build.</string>
+
+    <string name="queue_section_title">Payment queue</string>
+    <string name="queue_empty_title">ยังไม่มี QR ในคิว</string>
+    <string name="queue_empty_body">Imported QR images will appear here with their amount, recipient and status. No sample or demo payments are ever mixed with real data.</string>
+
+    <string name="safety_title">You stay in control of every payment</string>
+    <string name="safety_body">QR Payment Queue prepares, organizes and hands off payment information. It never enters PINs or OTPs, never touches biometric prompts or bank security screens, and never marks a payment as paid on its own.</string>
+
+    <string name="status_pipeline_caption">Queue states: DISCOVERED → DECODED → VALIDATED → READY → SUBMITTED → WAITING_CONFIRMATION → SUCCESS → RECONCILED / PAID</string>
+</resources>

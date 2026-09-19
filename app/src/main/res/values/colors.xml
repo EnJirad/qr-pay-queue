@@ -1,0 +1,4 @@
+<resources>
+    <!-- Deep teal accent used by the adaptive launcher icon. -->
+    <color name="ic_launcher_background">#0E5A50</color>
+</resources>

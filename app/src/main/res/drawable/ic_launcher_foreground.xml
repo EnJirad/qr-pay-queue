@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Decorative QR glyph: three finder patterns plus data modules. -->
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M30,30h18v18h-18z M34,34v10h10v-10z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M60,30h18v18h-18z M64,34v10h10v-10z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M30,60h18v18h-18z M34,64v10h10v-10z" />
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,54h6v6h-6z M66,54h6v6h-6z M54,66h6v6h-6z M72,66h6v6h-6z M66,72h6v6h-6z" />
+</vector>
