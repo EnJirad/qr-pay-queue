@@ -95,6 +95,12 @@ Review `git status` / `git diff` before committing. Never commit secrets,
 keystores, API keys, tokens or credentials. Never force push. Use the
 repository's main branch.
 
+Push every completed change to `main` in the same session, then read the CI run
+it triggers. The project owner expects finished work to be on GitHub, not left
+in a working tree: `git push` only when the change is complete and reviewed, and
+never force-push to make a push succeed (a rejected push means the remote is
+ahead — fetch, inspect, and integrate instead).
+
 ## 14. Documentation duty
 
 After meaningful work, update `AI_HANDOFF.md` with the real state: files

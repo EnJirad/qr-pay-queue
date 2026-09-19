@@ -22,8 +22,9 @@ sheet), segmented hand selector in settings, lazy daily reset.
 
 ## CI status right now (read this first)
 
-**V0.6.0 GREEN as of `6f4a032` (run `35466912022`, observed 2026-09-19).
-V0.7.0 changes are in the working tree, not yet pushed or built.**
+**`786bdde` GREEN (run `35476118557`, observed 2026-09-19): everything pushed to
+`main` is compiled, unit-tested, linted and packaged. The V0.7 and V0.8 sections
+below are what that run contains.**
 
 | Commit | Run | Result |
 | --- | --- | --- |
@@ -31,6 +32,12 @@ V0.7.0 changes are in the working tree, not yet pushed or built.**
 | `a65948d` fix: OptIn for the experimental Material3 bottom sheet | `35455290188` | RED (test compile errors) |
 | `ba3005f` fix: InMemoryAppSettingsStore import path | `35455677419` | RED — **3 unit test failures** |
 | `6f4a032` fix: keep reported QRs unusable, restore Home priority, honour hand mode | `35466912022` | **GREEN** — `testDebugUnitTest`, `lintDebug`, `assembleDebug`, APK 9.3M |
+| `2f86875` docs: record the observed V0.6 CI result | `35467134539` | GREEN |
+| `766caef` feat: fixed-position control panel with icon-only ActionRail (V0.7) | `35469780618` | RED — `Icons.Outlined.Help` unresolved, `markUnknown` argument mismatch |
+| `681076a` fix: replace `Icons.Outlined.Help` with `Icons.Outlined.Info` | `35470087863` | RED — still the `markUnknown` parameter mismatch |
+| `7692662` fix: pass null detail to `markUnknown` to match parameter order | `35470329500` | GREEN |
+| `3e16238` feat: 4-action one-handed payment flow with retry re-share (V0.8) | `35472604276` | RED — 7× unresolved `TestFixtures` in `PaymentQueueTest` |
+| `786bdde` fix: use the shared `testItem` fixture in the retryShare tests | `35476118557` | **GREEN** — unit tests, lint, `assembleDebug`, APK artifact `qr-payment-queue-v0.8.0-debug` |
 
 Run `35455677419` failed on:
 
@@ -41,6 +48,30 @@ Run `35455677419` failed on:
 All three were fixed at their cause by `6f4a032` (below) and CI has confirmed it.
 That run proves **compile + unit test + lint + APK packaging only** — no screen of
 this app has still ever been rendered, so nothing here is a device pass.
+
+## Latest change: the V0.8 retry tests could not compile (fixed)
+
+`3e16238` added seven `retryShare` tests that call `TestFixtures.readyItem(...)`,
+a helper that exists nowhere in `app/src/test`: `TestFixtures.kt` defines the
+top-level fixtures `testVersion`, `testItem` and `testQueue`, and no object named
+`TestFixtures` was ever added. `:app:compileDebugUnitTestKotlin` therefore failed
+on all seven references, so `testDebugUnitTest` never ran at all — that is why
+the V0.8 run was red (and why V0.7/V0.8 had no test evidence).
+
+The fix uses the fixture that already exists instead of adding a second,
+duplicate one: `testItem(id, position)` builds exactly the item those tests
+describe — READY, with one CURRENT QR version — and `startSharing`,
+`shareLaunched`, `confirmCompleted` and `retryShare` all reach the states the
+tests assert from there (the attempts count reaches 6 in the multiple-retry
+test, so its `>= 3` assertion holds honestly). No assertion was changed or
+weakened.
+
+Evidence: run `35476118557` (`786bdde`) is GREEN — `testDebugUnitTest`,
+`lintDebug`, `assembleDebug`, APK existence/size checks, artifact
+`qr-payment-queue-v0.8.0-debug`.
+
+Still not evidenced anywhere: a rendered screen. CI compiles, unit-tests, lints
+and packages; it never launches the app.
 
 ## Previous change: finish V0.6 (one-handed UX, settings, problem reasons, daily reset)
 
