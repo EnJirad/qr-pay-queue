@@ -14,14 +14,18 @@ captures/
 
 # Web-tool leftovers (must never come back into this repository)
 # This is a native Android project — no JS toolchain may be committed.
-node_modules/
-.vite/
-package.json
-package-lock.json
-bun.lock
-bun.lockb
-integrations.md
-src/
+#
+# These patterns are anchored to the repository root on purpose: an unanchored
+# `src/` also matched app/src/ and silently ignored the entire Android source
+# tree, which would have broken every build from a clean checkout.
+/node_modules/
+/.vite/
+/package.json
+/package-lock.json
+/bun.lock
+/bun.lockb
+/integrations.md
+/src/
 
 # Keystores and secrets — never commit these
 *.jks

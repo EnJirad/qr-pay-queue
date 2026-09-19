@@ -14,8 +14,8 @@ android {
         applicationId = "com.enjirad.qrqueue"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -71,6 +71,10 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.core)
+
+    // Real QR decoding: pure-Java ZXing core decodes a QR from the pixels of an
+    // imported image. No camera, no scanner activity, no second QR library.
+    implementation(libs.zxing.core)
 
     debugImplementation(libs.androidx.ui.tooling)
 

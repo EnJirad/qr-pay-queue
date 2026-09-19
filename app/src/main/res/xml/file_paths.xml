@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only the app-private queue image copies are shareable. Nothing else inside the
+  app is exposed, and the user's gallery files are never referenced here.
+-->
+<paths>
+    <files-path
+        name="queue_images"
+        path="qrqueue/images/" />
+</paths>

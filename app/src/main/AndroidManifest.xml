@@ -2,9 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      V0.1 requests no runtime permissions.
-      Folder/file access will use the Storage Access Framework (see README
-      roadmap), so the app never needs broad or unrestricted storage access.
+      No runtime permissions are requested.
+      QR images come from Android's own photo picker, which grants access to the
+      files the user selects. The app never asks for broad storage access, never
+      scans the device, and never reads the gallery on its own.
+
       This app never automates banking screens, PIN entry, OTP or biometrics.
     -->
 
@@ -25,6 +27,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Shares only the app-private queue image copies with the app the user
+          picks. Exported=false plus grantUriPermissions means no other app can
+          read them without an explicit, per-use grant.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

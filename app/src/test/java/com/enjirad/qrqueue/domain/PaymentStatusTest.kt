@@ -55,4 +55,41 @@ class PaymentStatusTest {
         assertFalse(PaymentStatus.VALIDATED.isError)
         assertFalse(PaymentStatus.READY.isError)
     }
+
+    @Test
+    fun onlyUnpayableProblemStatesAreExcludedFromTheQueue() {
+        assertTrue(PaymentStatus.INVALID.isExcludedFromQueue)
+        assertTrue(PaymentStatus.DUPLICATE.isExcludedFromQueue)
+        assertFalse(PaymentStatus.READY.isExcludedFromQueue)
+        assertFalse(PaymentStatus.UNKNOWN.isExcludedFromQueue)
+        assertFalse(PaymentStatus.PAYMENT_FAILED.isExcludedFromQueue)
+        assertFalse(PaymentStatus.SUCCESS.isExcludedFromQueue)
+    }
+
+    @Test
+    fun unknownIsProcessableSoTheQueueWaitsForTheUser() {
+        assertTrue(PaymentStatus.UNKNOWN.isProcessable)
+        assertTrue(PaymentStatus.READY.isProcessable)
+        assertTrue(PaymentStatus.SUBMITTED.isProcessable)
+        assertTrue(PaymentStatus.WAITING_CONFIRMATION.isProcessable)
+        assertFalse(PaymentStatus.SUCCESS.isProcessable)
+        assertFalse(PaymentStatus.PAYMENT_FAILED.isProcessable)
+        assertFalse(PaymentStatus.INVALID.isProcessable)
+    }
+
+    @Test
+    fun pendingStatesCoverEveryUnfinishedAmount() {
+        assertTrue(PaymentStatus.READY.isPending)
+        assertTrue(PaymentStatus.WAITING_CONFIRMATION.isPending)
+        assertFalse(PaymentStatus.SUCCESS.isPending)
+        assertFalse(PaymentStatus.PAYMENT_FAILED.isPending)
+        assertFalse(PaymentStatus.UNKNOWN.isPending)
+    }
+
+    @Test
+    fun noErrorStateIsEverCountedAsPaid() {
+        PaymentStatus.entries.filter { it.isError }.forEach { status ->
+            assertFalse("${status.name} must never count as paid", status.isPaid)
+        }
+    }
 }

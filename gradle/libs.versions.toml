@@ -4,6 +4,7 @@
 #   AGP 8.7.3            -> requires Gradle 8.9+ (wrapper uses 8.11.1), JDK 17+
 #   Kotlin 2.1.0         -> Compose compiler ships with the Kotlin plugin
 #   Compose BOM 2024.12.01 -> Material 3 1.3.x, UI 1.7.x
+#   ZXing core 3.5.4     -> pure-Java QR decoder, no Android dependency, min Java 8
 # Do not bump one version without checking the others (see AI_RULES.md).
 
 [versions]
@@ -14,6 +15,7 @@ lifecycle = "2.8.7"
 activityCompose = "1.9.3"
 composeBom = "2024.12.01"
 junit = "4.13.2"
+zxing = "3.5.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -29,6 +31,7 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
