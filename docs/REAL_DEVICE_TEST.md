@@ -1,4 +1,4 @@
-# Real-device test report — K PLUS share flow
+# Real-device test report — V0.4 image queue and K PLUS hand-off
 
 ## Status
 
@@ -12,9 +12,8 @@
 > has been verified is listed under "Verified so far" below. Everything else in
 > this document is a plan, not a result.
 
-Do not fill in a result you did not observe. Do not mark a test PASS based on the
-app's own UI alone: for TEST 2, TEST 3 and TEST 4 the evidence is what the
-**banking app** shows.
+Do not fill in a result you did not observe. For TEST 4 and TEST 5 the evidence
+is what the **banking app** shows, not what this app shows.
 
 ## Verified so far (no device required)
 
@@ -22,28 +21,28 @@ app's own UI alone: for TEST 2, TEST 3 and TEST 4 the evidence is what the
 | --- | --- |
 | APK builds | GitHub Actions `assembleDebug` BUILD SUCCESSFUL |
 | APK exists and is non-empty | CI `test -f` / `test -s`, `ls -lh`, `unzip -l` |
-| APK artifact published | artifact `qr-payment-queue-debug-apk` |
-| QR decoding works on real payloads | `QrImageDecoderTest` renders QR codes and reads them back |
-| Multi-QR screenshots are rejected, not guessed | `QrImageDecoderTest`, `QrValidationTest` |
-| Parser/validation/queue rules | 85 unit tests in `app/src/test/...` |
-| Share path uses `content://` + temporary read grant | `QrShare.kt`, `AndroidManifest.xml`, `res/xml/file_paths.xml` |
+| APK artifact published | artifact `qr-payment-queue-v0.4.0-debug` |
+| No QR decoding exists | no QR library in `gradle/libs.versions.toml`; no decoder source in `app/src/main` |
+| Queue state machine rules | `PaymentQueueTest`, `PaymentStatusTest` |
+| Import order and 1/3/10 images | `QueueImportTest` |
+| Share hand-off contract (`ACTION_SEND`, `content://`, image MIME, read grant) | `ShareIntentSpecTest`, `QrShare.kt`, `AndroidManifest.xml` |
 | Share target resolution is honest | `ShareTargetsTest` (pure logic) |
 | K PLUS package is visible to the resolver on Android 11+ | `<queries>` in `AndroidManifest.xml` |
 
-Not verified on a device: the photo picker UI, real screenshot decoding, the
-share sheet listing K PLUS, K PLUS accepting the image, K PLUS reading the QR,
-and everything about the return trip from K PLUS.
+Not verified on a device: the photo picker UI, the share sheet listing K PLUS,
+K PLUS accepting the shared image, K PLUS reading the QR, and everything about
+the return trip from K PLUS.
 
 ## Test environment (fill in when a device is available)
 
 | Field | Value |
 | --- | --- |
-| Device model | _to be filled in_ |
-| Android version | _to be filled in_ (Android 10 or newer) |
+| Device model | Xiaomi 15T Pro (target) |
+| Android version | Android 16 (target) |
 | K PLUS version | _to be filled in_ (from Play Store / app info) |
-| App version | 0.3.0 (versionCode 3) |
+| App version | 0.4.0 (versionCode 4) |
 | Build under test | commit hash of the tested build |
-| APK source | GitHub Actions artifact `qr-payment-queue-debug-apk` |
+| APK source | GitHub Actions artifact `qr-payment-queue-v0.4.0-debug` |
 | Test date | _to be filled in_ |
 | Tester | _to be filled in_ |
 
@@ -58,133 +57,145 @@ adb install -r app-debug.apk
 
 Legend for the status column: `NOT RUN` / `PASS` / `FAIL` / `BLOCKED`.
 
-### TEST 1 — Share sheet lists K PLUS
+### TEST 1 — one image becomes one queue item
 
-1. Import one QR screenshot, start the queue.
-2. Tap **Open / Share QR**.
-3. Look at the Android share sheet.
+1. Tap **Import QR images** and select **1** QR screenshot.
 
-Expected: the share sheet opens and **K PLUS is listed** as a target for the image.
-If it is not listed, the app itself says so on the processing card (either "K PLUS
-was not found on this device" or "K PLUS is installed but does not appear as a QR
-image share target") — record which message appeared.
+Expected: exactly **1 item** appears in the queue, with status `QUEUED`, and its
+image is shown on the current image card.
 
 Status: `NOT RUN`
 
-### TEST 2 — K PLUS accepts a `content://` image
+### TEST 2 — three images keep selection order
 
-1. Tap **Open / Share QR**.
-2. Choose **K PLUS**.
+1. Tap **Import QR images** and select **3** QR screenshots in a known order.
 
-Expected: K PLUS opens and shows something for the received image (a QR reading
-screen, or an explicit error — record exactly what appears).
-
-Status: `NOT RUN`
-
-### TEST 3 — K PLUS reads the QR from the shared image
-
-Expected: K PLUS shows payment details, or clearly states it cannot read the QR.
-If K PLUS cannot read screenshots at all, that is a finding about the banking app,
-not something this app can work around — record it and stop relying on TEST 4.
+Expected: **3 items** appear, in the same order they were selected, numbered
+01 / 02 / 03, all `QUEUED`.
 
 Status: `NOT RUN`
 
-### TEST 4 — recipient shown by K PLUS matches the app
+### TEST 3 — share opens the Android share sheet
 
-Expected: the recipient K PLUS shows matches **Recipient** on the queue card
-(same phone number / ID / biller), and the amount matches **Amount**.
+1. Tap **Share image to K PLUS** on the current item.
 
-Status: `NOT RUN`
-
-### TEST 5 — amount
-
-Expected: the amount K PLUS shows equals the amount the queue card shows, for a
-QR that contains an amount.
+Expected: the **Android share sheet** appears and **K PLUS can be selected** if it
+is installed and advertises an image share target. If it is not listed, the app
+itself says so on the card ("K PLUS was not found on this device" or "K PLUS is
+installed but does not appear as an image share target") — record which message
+appeared.
 
 Status: `NOT RUN`
 
-### TEST 6 — QR without an amount
+### TEST 4 — K PLUS receives the shared image
 
-1. Use a static PromptPay QR screenshot (no amount).
+1. On the share sheet, choose **K PLUS**.
 
-Expected: the queue card shows "No amount in this QR — enter it in your banking
-app", and K PLUS asks for the amount as its normal flow does. The app must never
-have invented a figure.
+Expected: K PLUS opens with the received image (a QR-reading screen, or an
+explicit error — record exactly what appears). If K PLUS cannot read a QR from a
+shared screenshot at all, that is a finding about K PLUS, not something this app
+can work around.
 
 Status: `NOT RUN`
 
-### TEST 7 — user cancels in K PLUS
+### TEST 5 — the app never claims success on its own
 
-1. Share the QR, open K PLUS, then back out without paying.
+1. Complete (or cancel) the payment in K PLUS.
 2. Return to QR Payment Queue.
 
-Expected: the item is **not** successful. It is still waiting for the user's
-answer, and the app asks "Have you completed this payment?".
+Expected: the app does **not** claim the payment succeeded. The item is not
+`COMPLETED`; it is `WAITING_USER`. Nothing is marked paid because a share
+happened, because K PLUS opened, or because the app resumed.
 
 Status: `NOT RUN`
 
-### TEST 8 — user pays successfully
+### TEST 6 — the confirmation UI appears
 
-1. Share the QR, pay in K PLUS, return.
-2. Tap **Payment successful**.
-
-Expected: the item is recorded as paid, the queue advances to the next QR, and the
-progress figures increase by that item's amount.
+Expected: on return, the confirmation prompt is shown:
+*ทำรายการสำหรับภาพนี้เสร็จแล้วหรือยัง?* with **ทำรายการเสร็จแล้ว** and
+**ยังไม่เสร็จ**.
 
 Status: `NOT RUN`
 
-### TEST 9 — user is unsure
+### TEST 7 — confirming completion advances the queue
 
-1. Share the QR, return without a clear result.
-2. Tap **Something went wrong**.
+1. Tap **ทำรายการเสร็จแล้ว**.
 
-Expected: the item becomes UNKNOWN, the queue **stops**, nothing advances
-automatically, and the screen asks the user to resolve the result. Confirming
-"Payment successful" or "Payment failed" afterwards is the only way forward.
+Expected: the current item becomes `COMPLETED`, and the **next item becomes the
+current one** and is ready to share. With a single-item queue the finished
+summary is shown instead.
 
 Status: `NOT RUN`
 
-### TEST 10 — process death with a payment in flight
+### TEST 8 — the app is killed during the payment
 
-1. Share a QR and open K PLUS.
-2. Kill QR Payment Queue from the recents/OS (or force stop).
+1. Share an image and open K PLUS.
+2. Kill QR Payment Queue from recents / force stop it.
 3. Reopen the app.
 
-Expected: the queue is restored, the current item is shown, its status is
-**UNKNOWN**, and nothing is marked paid. The user must resolve it.
+Expected: the payment state is **not** assumed successful. The queue is restored
+and the current item is `UNKNOWN`. The queue does not advance and the item is not
+retried automatically; the user must resolve it.
 
 Status: `NOT RUN`
 
-### TEST 11 — no repeated sharing by accident (double payment)
+### TEST 9 — "not done yet" does not advance
 
-1. Share a QR (item now waits for confirmation).
-2. Tap **Open / Share QR** again.
+1. Share an image, return, and tap **ยังไม่เสร็จ**.
 
-Expected: instead of sharing again immediately, a warning dialog appears: sharing
-again could pay the same bill twice. Only **Share again** proceeds. Cancelling
-does nothing.
+Expected: the item stays current and stays retryable. The queue does not advance
+to the next image. Sharing again asks for confirmation (**Share again**) with a
+double-payment warning.
 
 Status: `NOT RUN`
 
-### TEST 12 — cancellation and bad input
+### TEST 10 — no accidental double share
+
+1. Share an image (item is now `WAITING_USER`).
+2. Tap **Share image to K PLUS** again.
+
+Expected: a warning dialog appears: sharing again could pay the same bill twice.
+Only **Share again** proceeds. Cancelling does nothing, and nothing is shared
+automatically after an activity recreation or an app resume.
+
+Status: `NOT RUN`
+
+### TEST 11 — ten images
+
+1. Import **10** QR screenshots.
+
+Expected: **10 items**, numbered 01–10, in the selected order, all `QUEUED`. No
+crash, no reordering.
+
+Status: `NOT RUN`
+
+### TEST 12 — missing image file
+
+1. Import an image, then remove its stored copy (for example clear the app data
+   directory's `files/qrqueue/images/` file with root/`adb`, or use a debug build).
+
+Expected: the app does not crash. The item is shown as `FAILED` with a clear
+reason, and sharing it is not attempted.
+
+Status: `NOT RUN`
+
+### TEST 13 — cancellation and bad input
 
 - Cancel the photo picker: nothing is imported, no error dialog, no crash.
-- Import the same screenshot twice in one selection: the second is listed as a
-  duplicate and excluded.
-- Import a non-QR photo: listed as "No QR code could be read from this image".
-- Import a screenshot with two different QR codes: listed as "This image contains
-  more than one QR code" and excluded.
-- Import a corrupt/unreadable image file: listed as unreadable, no crash.
+- Select the same screenshot twice in one selection: only one queue item is
+  created.
+- Import a corrupt/unreadable image file: it is reported as not copied, no crash,
+  and **no queue item** is created for it.
 
 Status: `NOT RUN`
 
-### TEST 13 — uninstall data hygiene
+### TEST 14 — gallery originals are untouched
 
-1. Note the original screenshots in the gallery (files, names, timestamps).
+1. Note the original screenshots in the gallery (names, sizes, timestamps).
 2. Import them, work a queue, then use **Clear queue**.
 
 Expected: the gallery originals are unchanged (identical names, sizes and
-timestamps). The app's own copies are gone.
+timestamps). Only the app's own copies are gone.
 
 Status: `NOT RUN`
 
@@ -192,37 +203,31 @@ Status: `NOT RUN`
 
 | Case | Automated | Needs device |
 | --- | --- | --- |
-| Valid PromptPay QR | unit test | decoding real screenshots |
-| Valid Thai bill QR | unit test | decoding real screenshots |
-| Invalid CRC | unit test | — |
-| Malformed payload | unit test | — |
-| Unreadable image | unit test | corrupt real files |
-| No QR in image | unit test | — |
-| Duplicate QR (same payload) | unit test | — |
+| Import 1 / 3 / 10 images | unit test (order + positions) | picker behaviour |
 | Duplicate selected image | unit test (URI de-duplication) | picker behaviour |
-| Unsupported QR | unit test | — |
-| Amount missing | unit test | K PLUS flow |
-| Amount valid | unit test | K PLUS flow |
-| Multiple QR codes in one image | unit test | real screenshots |
-| Queue: one item / many items | unit test | tapping through |
-| Queue: failure / unknown / completed | unit test | tapping through |
-| Queue: app restart, process death | unit test (restore → UNKNOWN) | real restart |
+| Copy failure creates no item | — | real picker / corrupt file |
+| Missing stored image → FAILED, no crash | — | real file removal |
+| Orphan image cleanup | — | real file system |
+| Queue: QUEUED → SHARING → WAITING_USER → COMPLETED | unit test | tapping through |
+| Queue: QUEUED → SHARING → FAILED | unit test | share failure |
+| Queue: QUEUED → SHARING → WAITING_USER → UNKNOWN | unit test | real process death |
+| UNKNOWN is never auto-completed / auto-retried | unit test | real restart |
+| "Not done yet" does not advance | unit test | tapping through |
+| Share: ACTION_SEND, content://, image MIME, read grant | unit test | real share sheet |
 | Share: K PLUS installed / not installed | classification unit test | share sheet |
 | Share: cancelled | — | real chooser |
-| Share: no target available | classification unit test | device without any image share app |
-| Share: URI permission failure / invalid image | — | corrupt stored copy |
 | Double-share protection | unit test (state machine) | dialog behaviour |
+| K PLUS reads the QR image | — | K PLUS |
 
 ## Evidence to attach
 
-For each executed test, attach a screenshot with the file named
-`<test-number>-<step>.png` under `docs/evidence/` (create the directory when there
-is something real to put in it) and reference it in the table above. Do not add
-screenshots you did not take.
+For each executed test, attach a screenshot named `<test-number>-<step>.png` under
+`docs/evidence/` (create the directory when there is something real to put in it)
+and reference it from the test above. Do not add screenshots you did not take.
 
 ## What this app can never verify
 
 - Whether a bank transaction actually completed. There is no supported bank API
   in use, so the user's own answer is the only source of truth (see README).
-- Whether the user paid the wrong bill inside K PLUS. The app shows what the QR
-  contained; checking it against what the bank shows is the user's job.
+- Whether the user verified the recipient and amount correctly inside K PLUS. The
+  app does not read the QR, so checking it is the user's job inside K PLUS.

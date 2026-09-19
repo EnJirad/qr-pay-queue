@@ -1,212 +1,236 @@
 package com.enjirad.qrqueue.domain
 
 /**
- * A payment queue: the ordered set of QR items imported in one session, plus
- * exactly where the sequential run currently stands.
+ * The ordered set of images the user imported, and where the run currently is.
  *
- * This class is the whole sequential workflow as pure data. Every transition
- * returns a new queue and refuses anything that would break the safety rules:
+ * This class is the whole V0.4 workflow as pure data:
  *
- * - `READY` can only move to `SUBMITTED` by an explicit hand-off action.
- * - `SUCCESS` / `PAYMENT_FAILED` can only be reached from
- *   `WAITING_CONFIRMATION` or from an `UNKNOWN` item the user resolved — i.e.
- *   only from an explicit human answer. Showing or sharing a QR never settles a
- *   payment.
- * - An `UNKNOWN` item blocks the queue and is never retried automatically.
- * - An item interrupted mid-flight (app killed/backgrounded) comes back as
- *   `UNKNOWN` and must be resolved by the user.
+ * ```
+ * QUEUED → SHARING → WAITING_USER → COMPLETED
+ *                ↘ FAILED
+ * WAITING_USER → UNKNOWN
+ * ```
+ *
+ * Safety rules encoded here and never to be weakened:
+ *
+ * - Only the user's explicit "done" moves an item to [PaymentStatus.COMPLETED].
+ *   Sharing an image, opening K PLUS, or coming back from K PLUS settles
+ *   nothing.
+ * - The current item is always the first item the user has not completed, so a
+ *   [PaymentStatus.FAILED] or [PaymentStatus.UNKNOWN] item stops the queue
+ *   instead of being skipped.
+ * - A failed share (nothing was handed off) can be shared again; an
+ *   [PaymentStatus.UNKNOWN] result can never be shared again or completed
+ *   without an explicit user action.
+ *
+ * The current item is derived from the item statuses instead of being stored, so
+ * a restored queue can never point at the wrong image.
  */
 data class PaymentQueue(
     val queueId: String,
     val createdAt: Long,
     val items: List<QueueItem> = emptyList(),
-    val currentIndex: Int = NO_CURRENT_ITEM,
-    val started: Boolean = false,
-    val finished: Boolean = false,
     /** Last time anything in this queue changed (wall clock, millis). */
     val updatedAtMillis: Long = 0L,
 ) {
 
-    val currentItem: QueueItem? get() = items.getOrNull(currentIndex)
+    /** First item the user has not completed — the one being worked on. */
+    val currentItem: QueueItem? get() = items.firstOrNull { it.status.isActive }
+
+    /** Index of [currentItem], or [NO_CURRENT_ITEM]. */
+    val currentIndex: Int get() = items.indexOfFirst { it.status.isActive }
+
+    /** True once every item has been confirmed by the user. */
+    val finished: Boolean get() = items.isNotEmpty() && items.none { it.status.isActive }
+
+    /** 1-based position of the current item, for "Image 4 / 15". */
+    val currentOrdinal: Int get() = currentIndex + 1
 
     // ---- counts -------------------------------------------------------------
 
     val itemCount: Int get() = items.size
+    val completedCount: Int get() = items.count { it.status.isCompleted }
+    val remainingCount: Int get() = items.count { it.status.isActive }
+    val queuedCount: Int get() = items.count { it.status == PaymentStatus.QUEUED }
+    val waitingCount: Int get() = items.count { it.status == PaymentStatus.WAITING_USER }
+    val failedCount: Int get() = items.count { it.status == PaymentStatus.FAILED }
+    val unknownCount: Int get() = items.count { it.status == PaymentStatus.UNKNOWN }
 
-    /** Items that belong to the sequential run (everything but invalid/duplicate). */
-    val queueableItems: List<QueueItem> get() = items.filter { it.isPayable }
-    val excludedItems: List<QueueItem> get() = items.filter { !it.isPayable }
-
-    val readyItems: List<QueueItem> get() = items.filter { it.status == PaymentStatus.READY }
-    val paidItems: List<QueueItem> get() = items.filter { it.status.isPaid }
-    val failedItems: List<QueueItem> get() = items.filter { it.status == PaymentStatus.PAYMENT_FAILED }
-    val unknownItems: List<QueueItem> get() = items.filter { it.status == PaymentStatus.UNKNOWN }
-    val invalidItems: List<QueueItem> get() = items.filter { it.status == PaymentStatus.INVALID }
-    val duplicateItems: List<QueueItem> get() = items.filter { it.status == PaymentStatus.DUPLICATE }
-
-    val readyCount: Int get() = readyItems.size
-    val queueableCount: Int get() = queueableItems.size
-    val paidCount: Int get() = paidItems.size
-    val failedCount: Int get() = failedItems.size
-    val unknownCount: Int get() = unknownItems.size
-    val invalidCount: Int get() = invalidItems.size
-    val duplicateCount: Int get() = duplicateItems.size
-
-    /** Items the user has already answered for: paid or failed. */
-    val processedCount: Int get() = paidCount + failedCount
-    val remainingCount: Int get() = (queueableCount - processedCount).coerceAtLeast(0)
-
-    // ---- money --------------------------------------------------------------
-
-    /** Everything the queue is expected to move, from the real decoded amounts. */
-    val queuedSatang: Long get() = queueableItems.sumOf { it.amountSatang ?: 0L }
-
-    /** Only what the user confirmed as paid. */
-    val paidSatang: Long get() = paidItems.sumOf { it.amountSatang ?: 0L }
-
-    val failedSatang: Long get() = failedItems.sumOf { it.amountSatang ?: 0L }
-
-    val unknownSatang: Long get() = unknownItems.sumOf { it.amountSatang ?: 0L }
-
-    /** Amounts still waiting for a result, never affected by failed/unknown items. */
-    val remainingSatang: Long get() = queueableItems.filter { it.status.isPending }.sumOf { it.amountSatang ?: 0L }
-
-    /** Queueable QR codes that carry no amount at all (static PromptPay QRs). */
-    val amountMissingCount: Int get() = queueableItems.count { !it.hasKnownAmount }
-
-    // ---- state --------------------------------------------------------------
-
-    val canStart: Boolean get() = !started && readyCount > 0
-
-    /** True while a payment result is unknown and must be resolved first. */
-    val requiresResolution: Boolean get() = unknownCount > 0
-
-    /** Fraction of the run that has a recorded result (paid + failed). */
+    /** Fraction of the run the user has confirmed. */
     val progressFraction: Float get() =
-        if (queueableCount == 0) 0f else processedCount.toFloat() / queueableCount.toFloat()
+        if (itemCount == 0) 0f else completedCount.toFloat() / itemCount.toFloat()
 
-    /** 1-based position of the item being worked on, for "Payment 4 / 15". */
-    val currentOrdinal: Int get() =
-        if (currentIndex == NO_CURRENT_ITEM) processedCount else processedCount + 1
+    /** The next free position for an imported item. */
+    val nextPosition: Int get() = (items.maxOfOrNull { it.position } ?: -1) + 1
 
     // ---- transitions --------------------------------------------------------
 
-    /** Adds newly imported items. Only meaningful before the run starts. */
+    /** Adds newly imported items, keeping the queue in position order. */
     fun appendItems(newItems: List<QueueItem>): PaymentQueue =
-        if (newItems.isEmpty()) this else copy(items = items + newItems)
+        if (newItems.isEmpty()) this else copy(items = (items + newItems).sortedBy { it.position })
 
     /**
-     * Starts the sequential run at the first payable item.
-     * A queue with nothing payable is left untouched.
+     * Records that the current image is being handed to Android's share system.
+     *
+     * A [PaymentStatus.QUEUED] item was never shared, and a [PaymentStatus.FAILED]
+     * share never reached the share sheet, so those are safe to share.
+     * [PaymentStatus.WAITING_USER] is only reachable when the caller already has
+     * the user's explicit "share again" confirmation; [PaymentStatus.UNKNOWN] and
+     * [PaymentStatus.COMPLETED] are refused outright.
      */
-    fun start(): PaymentQueue {
-        if (started) return this
-        val first = items.indexOfFirst { it.status == PaymentStatus.READY }
-        if (first < 0) return this
-        return copy(started = true, finished = false, currentIndex = first)
+    fun startSharing(nowMillis: Long = 0L): PaymentQueue = updateCurrent(
+        from = setOf(
+            PaymentStatus.QUEUED,
+            PaymentStatus.FAILED,
+            PaymentStatus.WAITING_USER,
+        ),
+        to = PaymentStatus.SHARING,
+        nowMillis = nowMillis,
+    )
+
+    /** The share was launched, so the image reached the share sheet / K PLUS. */
+    fun shareLaunched(nowMillis: Long = 0L): PaymentQueue = updateCurrent(
+        from = setOf(PaymentStatus.SHARING),
+        to = PaymentStatus.WAITING_USER,
+        nowMillis = nowMillis,
+    )
+
+    /**
+     * Records a known, reported error for the current item: a missing stored
+     * image, a share intent that could not be built, or a share flow that could
+     * not be opened. Nothing is assumed about the payment.
+     */
+    fun failCurrent(detail: String?, nowMillis: Long = 0L): PaymentQueue = updateCurrent(
+        from = setOf(
+            PaymentStatus.QUEUED,
+            PaymentStatus.SHARING,
+            PaymentStatus.WAITING_USER,
+        ),
+        to = PaymentStatus.FAILED,
+        nowMillis = nowMillis,
+        detail = detail,
+    )
+
+    /**
+     * The user confirmed this payment is done. Only reachable from
+     * [PaymentStatus.WAITING_USER] or from the user resolving an
+     * [PaymentStatus.UNKNOWN] result, so a payment can never be completed just
+     * because an image was shared.
+     */
+    fun confirmCompleted(nowMillis: Long = 0L): PaymentQueue =
+        completeCurrent(setOf(PaymentStatus.WAITING_USER), nowMillis)
+
+    /** The user checked the bank app and confirmed an [PaymentStatus.UNKNOWN] result. */
+    fun resolveUnknownCompleted(nowMillis: Long = 0L): PaymentQueue =
+        completeCurrent(setOf(PaymentStatus.UNKNOWN), nowMillis)
+
+    /**
+     * The user says the payment is not done yet. The item stays in
+     * [PaymentStatus.WAITING_USER], which is what makes it retryable: the queue
+     * does not advance and the image can be shared again on purpose.
+     */
+    fun confirmNotCompleted(nowMillis: Long = 0L): PaymentQueue = updateCurrent(
+        from = setOf(PaymentStatus.WAITING_USER),
+        to = PaymentStatus.WAITING_USER,
+        nowMillis = nowMillis,
+    )
+
+    /**
+     * Marks the current item [PaymentStatus.UNKNOWN] because the real result is
+     * not known (the app was stopped while a payment was in flight).
+     */
+    fun markUnknown(detail: String? = null, nowMillis: Long = 0L): PaymentQueue = updateCurrent(
+        from = setOf(PaymentStatus.SHARING, PaymentStatus.WAITING_USER),
+        to = PaymentStatus.UNKNOWN,
+        nowMillis = nowMillis,
+        detail = detail,
+    )
+
+    /**
+     * Explicit user retry of a [PaymentStatus.FAILED] or [PaymentStatus.UNKNOWN]
+     * item. It goes back to [PaymentStatus.QUEUED] so the user can share it
+     * again on purpose; nothing is shared by this call.
+     */
+    fun retryCurrent(nowMillis: Long = 0L): PaymentQueue {
+        val index = currentIndex
+        val item = items.getOrNull(index) ?: return this
+        if (item.status != PaymentStatus.FAILED && item.status != PaymentStatus.UNKNOWN) return this
+        return copy(
+            items = items.replacingAt(
+                index,
+                item.copy(
+                    status = PaymentStatus.QUEUED,
+                    failureDetail = null,
+                    updatedAt = nowMillis,
+                ),
+            ),
+        )
     }
 
-    /** Records the hand-off to the banking app, then waits for the user's answer. */
-    fun handOffCurrent(): PaymentQueue = markCurrentSubmitted().awaitConfirmation()
-
-    fun markCurrentSubmitted(): PaymentQueue =
-        updateCurrent(from = PaymentStatus.READY, to = PaymentStatus.SUBMITTED)
-
-    fun awaitConfirmation(): PaymentQueue =
-        updateCurrent(from = PaymentStatus.SUBMITTED, to = PaymentStatus.WAITING_CONFIRMATION)
-
-    /** The user could not tell what happened: unknown, and the queue waits. */
-    fun reportUnknown(): PaymentQueue =
-        updateCurrent(from = PaymentStatus.WAITING_CONFIRMATION, to = PaymentStatus.UNKNOWN)
-
     /**
-     * Explicit "payment successful" — the only way an item becomes paid.
-     *
-     * @param nowMillis the user's confirmation time, recorded on the item.
+     * Applied to a queue loaded from disk: an item that was mid hand-off when the
+     * app stopped cannot be assumed successful or failed, so it becomes
+     * [PaymentStatus.UNKNOWN] and the queue waits for the user. Nothing is
+     * retried, and nothing is marked paid.
      */
-    fun confirmSuccess(nowMillis: Long = 0L): PaymentQueue =
-        settleCurrent(PaymentStatus.SUCCESS, nowMillis)
-
-    /**
-     * Explicit "payment failed" — recorded, then the queue moves on.
-     *
-     * @param nowMillis the user's confirmation time, recorded on the item.
-     */
-    fun confirmFailure(nowMillis: Long = 0L): PaymentQueue =
-        settleCurrent(PaymentStatus.PAYMENT_FAILED, nowMillis)
-
-    /**
-     * Resolves an [PaymentStatus.UNKNOWN] item with the real result the user
-     * found in the banking app. Refused for any other status, so an unresolved
-     * result can never be advanced by accident.
-     */
-    fun resolveUnknown(success: Boolean, nowMillis: Long = 0L): PaymentQueue {
-        val item = currentItem ?: return this
-        if (item.status != PaymentStatus.UNKNOWN) return this
-        val result = if (success) PaymentStatus.SUCCESS else PaymentStatus.PAYMENT_FAILED
-        return settleCurrent(result, nowMillis)
-    }
-
-    /**
-     * Applied to a queue loaded from disk: an item that was mid-hand-off when
-     * the app stopped cannot be assumed successful or failed, so it becomes
-     * [PaymentStatus.UNKNOWN] and needs an explicit resolution.
-     */
-    fun resolveInterrupted(): PaymentQueue = normalized(
-        items = items.map { item ->
-            if (item.status == PaymentStatus.SUBMITTED || item.status == PaymentStatus.WAITING_CONFIRMATION) {
-                item.copy(status = PaymentStatus.UNKNOWN)
+    fun resolveInterrupted(detail: String? = null, nowMillis: Long = 0L): PaymentQueue {
+        val resolved = items.map { item ->
+            if (item.status == PaymentStatus.SHARING || item.status == PaymentStatus.WAITING_USER) {
+                item.copy(
+                    status = PaymentStatus.UNKNOWN,
+                    failureDetail = detail,
+                    updatedAt = nowMillis,
+                )
             } else {
                 item
             }
-        },
-    )
-
-    /** Recomputes the pointer and the finished flag from the items themselves. */
-    fun normalized(): PaymentQueue = normalized(items)
-
-    private fun normalized(items: List<QueueItem>): PaymentQueue {
-        if (!started) return copy(items = items, currentIndex = NO_CURRENT_ITEM, finished = false)
-        val current = items.getOrNull(currentIndex)
-        if (current != null && current.status.isProcessable) {
-            return copy(items = items, currentIndex = currentIndex, finished = false)
         }
-        val next = items.indexOfFirst { it.status.isProcessable }
-        return if (next >= 0) {
-            copy(items = items, currentIndex = next, finished = false)
-        } else {
-            copy(items = items, currentIndex = NO_CURRENT_ITEM, finished = true)
-        }
+        return copy(items = resolved)
     }
 
-    private fun updateCurrent(from: PaymentStatus, to: PaymentStatus): PaymentQueue {
-        val index = currentIndex
-        val item = items.getOrNull(index) ?: return this
-        if (item.status != from) return this
-        return copy(items = items.replacingAt(index, item.copy(status = to)))
-    }
+    /** Items in queue order, with any out-of-order positions repaired. */
+    fun normalized(): PaymentQueue = copy(items = items.sortedBy { it.position })
 
-    /**
-     * Records a final result for the current item and moves to the next payable
-     * one. Only reachable from [PaymentStatus.WAITING_CONFIRMATION] or
-     * [PaymentStatus.UNKNOWN].
-     */
-    private fun settleCurrent(result: PaymentStatus, nowMillis: Long): PaymentQueue {
+    private fun updateCurrent(
+        from: Set<PaymentStatus>,
+        to: PaymentStatus,
+        nowMillis: Long = 0L,
+        detail: String? = null,
+    ): PaymentQueue {
         val index = currentIndex
         val item = items.getOrNull(index) ?: return this
-        if (item.status != PaymentStatus.WAITING_CONFIRMATION && item.status != PaymentStatus.UNKNOWN) {
-            return this
-        }
-        val settled = items.replacingAt(
-            index,
-            item.copy(status = result, decidedAtMillis = nowMillis),
+        if (item.status !in from) return this
+        return copy(
+            items = items.replacingAt(
+                index,
+                item.copy(
+                    status = to,
+                    failureDetail = when (to) {
+                        PaymentStatus.FAILED, PaymentStatus.UNKNOWN -> detail
+                        // Retrying a failed item starts a fresh hand-off.
+                        PaymentStatus.SHARING -> null
+                        else -> item.failureDetail
+                    },
+                    updatedAt = nowMillis,
+                ),
+            ),
         )
-        val next = settled.indexOfFirst { it.status.isProcessable }
-        return if (next >= 0) {
-            copy(items = settled, currentIndex = next, finished = false)
-        } else {
-            copy(items = settled, currentIndex = NO_CURRENT_ITEM, finished = true)
-        }
+    }
+
+    private fun completeCurrent(from: Set<PaymentStatus>, nowMillis: Long): PaymentQueue {
+        val index = currentIndex
+        val item = items.getOrNull(index) ?: return this
+        if (item.status !in from) return this
+        return copy(
+            items = items.replacingAt(
+                index,
+                item.copy(
+                    status = PaymentStatus.COMPLETED,
+                    failureDetail = null,
+                    updatedAt = nowMillis,
+                ),
+            ),
+        )
     }
 
     private fun List<QueueItem>.replacingAt(index: Int, value: QueueItem): List<QueueItem> {
@@ -216,10 +240,17 @@ data class PaymentQueue(
     }
 
     companion object {
-        /** No item is being worked on (queue not started, or finished). */
+        /** No item is being worked on (the queue is empty or finished). */
         const val NO_CURRENT_ITEM = -1
 
-        fun create(queueId: String, createdAt: Long, items: List<QueueItem> = emptyList()): PaymentQueue =
-            PaymentQueue(queueId = queueId, createdAt = createdAt, items = items)
+        fun create(
+            queueId: String,
+            createdAt: Long,
+            items: List<QueueItem> = emptyList(),
+        ): PaymentQueue = PaymentQueue(
+            queueId = queueId,
+            createdAt = createdAt,
+            items = items.sortedBy { it.position },
+        )
     }
 }

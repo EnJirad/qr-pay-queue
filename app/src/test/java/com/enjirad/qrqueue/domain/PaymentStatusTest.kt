@@ -4,92 +4,69 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * The status model is where the product's safety promises live, so the rules are
+ * asserted directly: only the user's own confirmation completes an item, and an
+ * item that may already have reached K PLUS is never shared without a warning.
+ */
 class PaymentStatusTest {
 
     @Test
-    fun submittedOrWaitingIsNeverCountedAsPaid() {
-        // The app must never mark a payment paid just because it was opened,
-        // shared or handed to a banking app.
-        assertFalse(PaymentStatus.SUBMITTED.isTerminal)
-        assertFalse(PaymentStatus.WAITING_CONFIRMATION.isTerminal)
-        assertTrue(PaymentStatus.SUBMITTED !in PaymentStatus.completedStates)
-        assertTrue(PaymentStatus.WAITING_CONFIRMATION !in PaymentStatus.completedStates)
+    fun onlyTheUserConfirmedStateCountsAsCompleted() {
+        assertTrue(PaymentStatus.COMPLETED.isCompleted)
+        listOf(
+            PaymentStatus.QUEUED,
+            PaymentStatus.SHARING,
+            PaymentStatus.WAITING_USER,
+            PaymentStatus.FAILED,
+            PaymentStatus.UNKNOWN,
+        ).forEach { status ->
+            assertFalse("${status.name} must not count as completed", status.isCompleted)
+        }
     }
 
     @Test
-    fun onlyHumanVerifiedStatesCountAsCompleted() {
-        assertTrue(PaymentStatus.completedStates.containsAll(
-            setOf(PaymentStatus.SUCCESS, PaymentStatus.RECONCILED, PaymentStatus.PAID),
-        ))
-        assertTrue(PaymentStatus.completedStates.none { it.isError })
+    fun sharingOrWaitingIsNeverTreatedAsAPayment() {
+        // Handing an image to the share sheet is not a payment.
+        assertFalse(PaymentStatus.SHARING.isCompleted)
+        assertFalse(PaymentStatus.WAITING_USER.isCompleted)
+        assertTrue(PaymentStatus.SHARING.isActive)
+        assertTrue(PaymentStatus.WAITING_USER.isActive)
     }
 
     @Test
-    fun everyTerminalStateIsEitherSuccessOrError() {
+    fun onlyCompletedIsInactive() {
+        assertFalse(PaymentStatus.COMPLETED.isActive)
         PaymentStatus.entries
-            .filter { it.isTerminal }
+            .filter { it != PaymentStatus.COMPLETED }
             .forEach { status ->
-                val isCompleted = status in PaymentStatus.completedStates
-                assertTrue(
-                    "Terminal state ${status.name} must be a completed or an error state",
-                    isCompleted || status.isError,
-                )
+                assertTrue("${status.name} must still need the user", status.isActive)
             }
     }
 
     @Test
-    fun documentedErrorStatesAreFlagged() {
-        val expectedErrors = listOf(
-            PaymentStatus.INVALID,
-            PaymentStatus.RECIPIENT_MISMATCH,
-            PaymentStatus.AMOUNT_MISMATCH,
-            PaymentStatus.ORDER_NOT_FOUND,
-            PaymentStatus.DUPLICATE,
-            PaymentStatus.EXPIRED,
-            PaymentStatus.PAYMENT_FAILED,
-            PaymentStatus.UNKNOWN,
-        )
-        expectedErrors.forEach { status ->
-            assertTrue("${status.name} must be flagged as an error", status.isError)
+    fun failedAndUnknownAreTheErrorStates() {
+        assertTrue(PaymentStatus.FAILED.isError)
+        assertTrue(PaymentStatus.UNKNOWN.isError)
+        listOf(
+            PaymentStatus.QUEUED,
+            PaymentStatus.SHARING,
+            PaymentStatus.WAITING_USER,
+            PaymentStatus.COMPLETED,
+        ).forEach { status ->
+            assertFalse("${status.name} is not an error state", status.isError)
         }
-        assertFalse(PaymentStatus.VALIDATED.isError)
-        assertFalse(PaymentStatus.READY.isError)
     }
 
     @Test
-    fun onlyUnpayableProblemStatesAreExcludedFromTheQueue() {
-        assertTrue(PaymentStatus.INVALID.isExcludedFromQueue)
-        assertTrue(PaymentStatus.DUPLICATE.isExcludedFromQueue)
-        assertFalse(PaymentStatus.READY.isExcludedFromQueue)
-        assertFalse(PaymentStatus.UNKNOWN.isExcludedFromQueue)
-        assertFalse(PaymentStatus.PAYMENT_FAILED.isExcludedFromQueue)
-        assertFalse(PaymentStatus.SUCCESS.isExcludedFromQueue)
-    }
-
-    @Test
-    fun unknownIsProcessableSoTheQueueWaitsForTheUser() {
-        assertTrue(PaymentStatus.UNKNOWN.isProcessable)
-        assertTrue(PaymentStatus.READY.isProcessable)
-        assertTrue(PaymentStatus.SUBMITTED.isProcessable)
-        assertTrue(PaymentStatus.WAITING_CONFIRMATION.isProcessable)
-        assertFalse(PaymentStatus.SUCCESS.isProcessable)
-        assertFalse(PaymentStatus.PAYMENT_FAILED.isProcessable)
-        assertFalse(PaymentStatus.INVALID.isProcessable)
-    }
-
-    @Test
-    fun pendingStatesCoverEveryUnfinishedAmount() {
-        assertTrue(PaymentStatus.READY.isPending)
-        assertTrue(PaymentStatus.WAITING_CONFIRMATION.isPending)
-        assertFalse(PaymentStatus.SUCCESS.isPending)
-        assertFalse(PaymentStatus.PAYMENT_FAILED.isPending)
-        assertFalse(PaymentStatus.UNKNOWN.isPending)
-    }
-
-    @Test
-    fun noErrorStateIsEverCountedAsPaid() {
-        PaymentStatus.entries.filter { it.isError }.forEach { status ->
-            assertFalse("${status.name} must never count as paid", status.isPaid)
-        }
+    fun onlyAnItemThatCannotHaveReachedKPlusIsSharedWithoutAWarning() {
+        assertTrue(PaymentStatus.QUEUED.canShareWithoutWarning)
+        // A failed share never reached the share sheet, so retrying it is safe.
+        assertTrue(PaymentStatus.FAILED.canShareWithoutWarning)
+        // These may already have been handed to K PLUS: re-sharing them must be explicit.
+        assertFalse(PaymentStatus.WAITING_USER.canShareWithoutWarning)
+        assertFalse(PaymentStatus.UNKNOWN.canShareWithoutWarning)
+        assertFalse(PaymentStatus.SHARING.canShareWithoutWarning)
+        assertFalse(PaymentStatus.COMPLETED.canShareWithoutWarning)
     }
 }

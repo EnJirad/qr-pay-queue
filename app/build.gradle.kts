@@ -14,8 +14,8 @@ android {
         applicationId = "com.enjirad.qrqueue"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
     buildTypes {
@@ -40,9 +40,9 @@ android {
     }
 
     lint {
-        // Lint runs in CI (`./gradlew lintDebug`) and reports findings, but a
-        // style warning must never be mistaken for the APK verification gate.
-        abortOnError = false
+        // Lint runs in CI (`./gradlew lintDebug`) and must fail the build on a
+        // real problem, so a lint error can never be mistaken for a pass.
+        abortOnError = true
     }
 
     packaging {
@@ -72,9 +72,8 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.core)
 
-    // Real QR decoding: pure-Java ZXing core decodes a QR from the pixels of an
-    // imported image. No camera, no scanner activity, no second QR library.
-    implementation(libs.zxing.core)
+    // No QR decoder dependency: V0.4 does not read QR codes. The image is handed
+    // to K PLUS through Android's own share sheet, and K PLUS reads it.
 
     debugImplementation(libs.androidx.ui.tooling)
 

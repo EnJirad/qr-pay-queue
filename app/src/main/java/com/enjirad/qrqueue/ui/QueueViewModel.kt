@@ -3,17 +3,13 @@ package com.enjirad.qrqueue.ui
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
-import com.enjirad.qrqueue.data.QrImageFiles
 import com.enjirad.qrqueue.data.QueueRepository
 import com.enjirad.qrqueue.data.ShareTargets
-import com.enjirad.qrqueue.data.StoredImage
-import com.enjirad.qrqueue.domain.ItemOutcome
 import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
-import com.enjirad.qrqueue.domain.QrValidation
 import com.enjirad.qrqueue.domain.QueueImport
 import com.enjirad.qrqueue.domain.QueueItem
-import com.enjirad.qrqueue.domain.ValidationIssue
+import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,17 +25,16 @@ import kotlinx.coroutines.withContext
 /** One-off messages the screen should surface to the user. */
 enum class QueueNotice {
     IMAGES_NOT_IMPORTED,
-    QUEUE_ALREADY_RUNNING,
-    NOTHING_TO_PAY,
     SHARE_FAILED,
     SHARE_TARGET_UNAVAILABLE,
     VIEW_TARGET_UNAVAILABLE,
+    IMAGE_MISSING,
     QUEUE_NOT_SAVED,
     QUEUE_CLEARED,
 }
 
 /** Where the user is in the workflow. */
-enum class QueueStage { HOME, REVIEW, PROCESSING, SUMMARY }
+enum class QueueStage { HOME, QUEUE, FINISHED }
 
 /** Progress of the multi-image import, in images. */
 data class ImportProgress(val processed: Int, val total: Int)
@@ -48,8 +43,9 @@ data class ImportProgress(val processed: Int, val total: Int)
 enum class ImageIntentKind { SHARE, VIEW }
 
 /**
- * A pending one-shot request to hand one stored QR image to another app.
- * It is transient UI state: it is never persisted with the queue.
+ * A pending one-shot request to hand one stored image to another app.
+ * It is transient UI state: it is never persisted with the queue, so an activity
+ * recreation or a process restart can never trigger a second share.
  */
 data class ImageIntentRequest(
     val kind: ImageIntentKind,
@@ -59,40 +55,45 @@ data class ImageIntentRequest(
     val fileName: String,
 )
 
-/**
- * Everything the queue screen renders, derived from the persisted queue.
- */
+/** Everything the queue screen renders, derived from the persisted queue. */
 data class QueueUiState(
     val queue: PaymentQueue? = null,
     val importing: Boolean = false,
     val importProgress: ImportProgress? = null,
-    val startConfirmationVisible: Boolean = false,
     val clearConfirmationVisible: Boolean = false,
     /** Set when the user taps share on an item that was already handed off. */
     val reShareConfirmationVisible: Boolean = false,
+    /** Id of the WAITING_USER item whose confirmation the user already answered "not yet". */
+    val confirmationDismissedFor: String? = null,
     val imageIntent: ImageIntentRequest? = null,
     val notice: QueueNotice? = null,
 ) {
     val stage: QueueStage
         get() = when {
             queue == null -> QueueStage.HOME
-            !queue.started -> QueueStage.REVIEW
-            queue.finished -> QueueStage.SUMMARY
-            else -> QueueStage.PROCESSING
+            queue.finished -> QueueStage.FINISHED
+            else -> QueueStage.QUEUE
         }
 }
 
 /**
- * State holder for the whole workflow: import, decode, validate, review, the
- * sequential payment run and the hand-off to a banking app.
+ * State holder for the whole workflow: import images, queue them, hand the
+ * current image to K PLUS through Android's share sheet, and record the user's
+ * own confirmation.
  *
- * Rules this class never breaks (see AI_RULES.md):
+ * The app does not read the QR code and does not decide whether a payment
+ * happened. Rules this class never breaks (see AI_RULES.md):
+ *
+ * - images are copied into app-private storage; the gallery original is never
+ *   touched, and no item is created for a copy that failed;
  * - the queue is mutated only through [PaymentQueue] transitions, which refuse
- *   any transition that would assume a payment succeeded;
+ *   any change that would assume a payment succeeded;
  * - every mutation is persisted before the UI sees it, and a failed save is
  *   reported instead of silently ignored;
- * - an item that was mid-hand-off when the app stopped comes back as UNKNOWN;
- * - an item that was already handed off is not shared again without an explicit
+ * - a share never marks anything paid; only the user's explicit "done" does;
+ * - an item that was mid hand-off when the app stopped comes back as UNKNOWN;
+ * - sharing is only ever started by a user action, and an item that may already
+ *   have been handed to K PLUS is not shared again without an explicit
  *   confirmation, so a repeated tap cannot cause a double payment;
  * - no banking credential is ever requested, stored or entered.
  */
@@ -109,7 +110,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         if (restored != null) {
             // A payment that was in flight when the app stopped has an unknown
             // result: it is never assumed successful, and never retried.
-            val resolved = restored.resolveInterrupted()
+            val resolved = restored.resolveInterrupted(INTERRUPTED_DETAIL, System.currentTimeMillis())
             persist(resolved)
             sweepOrphanImages(resolved)
         }
@@ -124,16 +125,11 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Called with the images the user picked. Each image is copied into
-     * app-private storage, decoded, validated and added to the queue — invalid
-     * and duplicate images are added too, so the review screen can show exactly
-     * what could not be used.
+     * app-private storage and added to the queue. An image that cannot be copied
+     * produces no queue item at all — the app never pretends to have an image it
+     * does not have — and the failure is reported instead.
      */
     fun onImagesPicked(uris: List<Uri>) {
-        val existingQueue = _uiState.value.queue
-        if (existingQueue != null && existingQueue.started) {
-            _uiState.update { it.copy(notice = QueueNotice.QUEUE_ALREADY_RUNNING) }
-            return
-        }
         val sourceUris = QueueImport.dedupeSourceUris(uris.map { uri -> uri.toString() })
         if (sourceUris.isEmpty()) {
             _uiState.update { it.copy(importing = false, importProgress = null) }
@@ -143,18 +139,21 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 importing = true,
                 importProgress = ImportProgress(0, sourceUris.size),
-                startConfirmationVisible = false,
             )
         }
         scope.launch {
-            val acceptedKeys = QrValidation.acceptedPayloadKeys(existingQueue?.items.orEmpty()).toMutableSet()
+            val existingQueue = _uiState.value.queue
+            var nextPosition = existingQueue?.nextPosition ?: 0
             val importedItems = mutableListOf<QueueItem>()
             var failedImports = 0
             sourceUris.forEachIndexed { index, sourceUri ->
-                val imported = withContext(Dispatchers.IO) { importOne(sourceUri, acceptedKeys) }
-                if (imported.storedCopy == null) failedImports++
-                importedItems += imported.item
-                imported.item.rawPayload?.let { payload -> acceptedKeys += QrValidation.payloadKey(payload) }
+                val item = withContext(Dispatchers.IO) { importOne(sourceUri, nextPosition) }
+                if (item == null) {
+                    failedImports++
+                } else {
+                    importedItems += item
+                    nextPosition++
+                }
                 _uiState.update {
                     it.copy(importProgress = ImportProgress(index + 1, sourceUris.size))
                 }
@@ -165,7 +164,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
                 // The queue was cleared while these images were being imported.
                 // Do not resurrect a deleted queue: drop the result and the image
                 // copies that were just written.
-                val copiedPaths = importedItems.mapNotNull { item -> item.storedImagePath }
+                val copiedPaths = importedItems.map { item -> item.storedImagePath }
                 withContext(Dispatchers.IO) { repository.deleteImages(copiedPaths) }
                 _uiState.update { it.copy(importing = false, importProgress = null) }
                 return@launch
@@ -190,169 +189,172 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(importing = false, importProgress = null) }
     }
 
-    private class ImportedItem(val item: QueueItem, val storedCopy: StoredImage?)
-
-    /** Copies, decodes and validates one picked image. Runs on the IO dispatcher. */
-    private fun importOne(sourceUri: String, acceptedKeys: Set<String>): ImportedItem {
+    /** Copies one picked image into app-private storage. Runs on the IO dispatcher. */
+    private fun importOne(sourceUri: String, position: Int): QueueItem? {
         val itemId = QueueImport.newItemId()
-        val importedAt = System.currentTimeMillis()
         val stored = runCatching { repository.importImage(Uri.parse(sourceUri), itemId) }.getOrNull()
-        if (stored == null) {
-            return ImportedItem(
-                item = QueueImport.buildItem(
-                    id = itemId,
-                    fileName = sourceUri.substringAfterLast('/').ifBlank { DEFAULT_FILE_NAME },
-                    sourceUri = sourceUri,
-                    storedImagePath = null,
-                    mimeType = null,
-                    outcome = ItemOutcome.Rejected(
-                        ValidationIssue.UNREADABLE_IMAGE,
-                        "the selected image could not be copied into the app",
-                    ),
-                    importedAtMillis = importedAt,
-                ),
-                storedCopy = null,
-            )
-        }
-        val decodeResult = QrImageFiles.decodeQr(stored.file)
-        val outcome = QrValidation.evaluate(decodeResult, acceptedKeys)
-        return ImportedItem(
-            item = QueueImport.buildItem(
-                id = itemId,
-                fileName = stored.displayName,
-                sourceUri = sourceUri,
-                storedImagePath = stored.file.absolutePath,
-                mimeType = stored.mimeType,
-                outcome = outcome,
-                importedAtMillis = importedAt,
-            ),
-            storedCopy = stored,
+            ?: return null
+        return QueueImport.buildItem(
+            id = itemId,
+            position = position,
+            sourceUri = sourceUri,
+            storedImagePath = stored.file.absolutePath,
+            displayName = stored.displayName,
+            mimeType = stored.mimeType,
+            nowMillis = System.currentTimeMillis(),
         )
     }
 
-    // ---- review and start ---------------------------------------------------
-
-    fun onStartRequested() {
-        _uiState.update { it.copy(startConfirmationVisible = true) }
-    }
-
-    fun onStartConfirmationDismissed() {
-        _uiState.update { it.copy(startConfirmationVisible = false) }
-    }
-
-    /** Starts the sequential run from the real confirmation summary. */
-    fun onStartConfirmed() {
-        val queue = _uiState.value.queue ?: return
-        val started = queue.start()
-        if (!started.started) {
-            _uiState.update {
-                it.copy(startConfirmationVisible = false, notice = QueueNotice.NOTHING_TO_PAY)
-            }
-            return
-        }
-        _uiState.update { it.copy(startConfirmationVisible = false) }
-        persist(started)
-    }
-
-    // ---- hand-off and confirmation -----------------------------------------
+    // ---- hand-off -----------------------------------------------------------
 
     /**
-     * The user wants to open or share the current QR with another app.
+     * The user wants to hand the current image to another app.
      *
      * Sharing is gated: nothing happens while a previous hand-off is still in
      * flight, the device must actually have an app that can receive an image, and
-     * an item that was already handed off needs an explicit confirmation first.
+     * an item that may already have reached K PLUS ([PaymentStatus.WAITING_USER])
+     * needs an explicit confirmation first. An [PaymentStatus.UNKNOWN] item must
+     * be resolved by the user before it can be shared again.
      */
-    fun onShareQrRequested() {
+    fun onShareCurrentRequested() {
         if (_uiState.value.imageIntent != null) return
-        val item = currentItem() ?: return
-        val targets = ShareTargets.query(getApplication<Application>(), item.mimeType)
-        if (!targets.canShare) {
-            _uiState.update { it.copy(notice = QueueNotice.SHARE_TARGET_UNAVAILABLE) }
-            return
+        val item = _uiState.value.queue?.currentItem ?: return
+        when (item.status) {
+            PaymentStatus.QUEUED, PaymentStatus.FAILED -> requestShare(item)
+            PaymentStatus.WAITING_USER ->
+                _uiState.update { it.copy(reShareConfirmationVisible = true) }
+            PaymentStatus.SHARING, PaymentStatus.UNKNOWN, PaymentStatus.COMPLETED -> Unit
         }
-        if (item.status != PaymentStatus.READY) {
-            // Already shared once. Sharing again could pay the same bill twice.
-            _uiState.update { it.copy(reShareConfirmationVisible = true) }
-            return
-        }
-        requestImageIntent(ImageIntentKind.SHARE, item, targets.shareMimeType)
     }
 
-    /** The user explicitly confirmed sharing an already handed-off QR again. */
+    /** The user explicitly confirmed sharing an already handed-off image again. */
     fun onReShareConfirmed() {
-        _uiState.update { it.copy(reShareConfirmationVisible = false) }
-        val item = currentItem() ?: return
-        val targets = ShareTargets.query(getApplication<Application>(), item.mimeType)
-        if (!targets.canShare) {
-            _uiState.update { it.copy(notice = QueueNotice.SHARE_TARGET_UNAVAILABLE) }
-            return
+        _uiState.update {
+            it.copy(reShareConfirmationVisible = false, confirmationDismissedFor = null)
         }
-        requestImageIntent(ImageIntentKind.SHARE, item, targets.shareMimeType)
+        val item = _uiState.value.queue?.currentItem ?: return
+        if (item.status != PaymentStatus.WAITING_USER) return
+        requestShare(item)
     }
 
     fun onReShareDismissed() {
         _uiState.update { it.copy(reShareConfirmationVisible = false) }
     }
 
-    /** Open the stored QR image in a viewer. This is not a hand-off. */
-    fun onViewQrRequested() {
+    /** Open the stored image in a viewer. This is not a hand-off and changes nothing. */
+    fun onViewCurrentRequested() {
         if (_uiState.value.imageIntent != null) return
-        val item = currentItem() ?: return
-        requestImageIntent(
-            kind = ImageIntentKind.VIEW,
-            item = item,
-            mimeType = item.mimeType ?: ShareTargets.ANY_IMAGE_MIME_TYPE,
-        )
+        val item = _uiState.value.queue?.currentItem ?: return
+        if (!File(item.storedImagePath).isFile) {
+            failCurrent(MISSING_IMAGE_DETAIL, QueueNotice.IMAGE_MISSING)
+            return
+        }
+        _uiState.update {
+            it.copy(
+                imageIntent = ImageIntentRequest(
+                    kind = ImageIntentKind.VIEW,
+                    itemId = item.id,
+                    filePath = item.storedImagePath,
+                    mimeType = item.mimeType,
+                    fileName = item.displayName,
+                ),
+            )
+        }
+    }
+
+    private fun requestShare(item: QueueItem) {
+        if (!File(item.storedImagePath).isFile) {
+            failCurrent(MISSING_IMAGE_DETAIL, QueueNotice.IMAGE_MISSING)
+            return
+        }
+        val targets = ShareTargets.query(getApplication<Application>(), item.mimeType)
+        if (!targets.canShare) {
+            _uiState.update { it.copy(notice = QueueNotice.SHARE_TARGET_UNAVAILABLE) }
+            return
+        }
+        // Mark the item as sharing before the intent is launched, so a process
+        // death during the hand-off is restored as UNKNOWN rather than QUEUED.
+        updateQueue { queue -> queue.startSharing(System.currentTimeMillis()) }
+        _uiState.update {
+            it.copy(
+                confirmationDismissedFor = null,
+                imageIntent = ImageIntentRequest(
+                    kind = ImageIntentKind.SHARE,
+                    itemId = item.id,
+                    filePath = item.storedImagePath,
+                    mimeType = targets.shareMimeType ?: item.mimeType,
+                    fileName = item.displayName,
+                ),
+            )
+        }
     }
 
     /**
      * The screen reports whether the intent actually launched.
      *
-     * A share moves the item to "waiting for confirmation" — never to a paid
-     * state. Viewing the image changes nothing at all.
+     * A launched share moves the item to "waiting for the user" — never to a
+     * completed state. A share that could not start is recorded as a known
+     * failure, because nothing was handed off.
      */
     fun onImageIntentLaunched(kind: ImageIntentKind, launched: Boolean) {
         _uiState.update { it.copy(imageIntent = null) }
-        if (!launched) {
-            val notice = when (kind) {
-                ImageIntentKind.SHARE -> QueueNotice.SHARE_FAILED
-                ImageIntentKind.VIEW -> QueueNotice.VIEW_TARGET_UNAVAILABLE
+        if (kind == ImageIntentKind.VIEW) {
+            if (!launched) {
+                _uiState.update { it.copy(notice = QueueNotice.VIEW_TARGET_UNAVAILABLE) }
             }
-            _uiState.update { it.copy(notice = notice) }
             return
         }
-        if (kind == ImageIntentKind.SHARE) {
-            updateQueue { queue -> queue.handOffCurrent() }
+        if (launched) {
+            updateQueue { queue -> queue.shareLaunched(System.currentTimeMillis()) }
+        } else {
+            updateQueue { queue ->
+                queue.failCurrent(SHARE_FAILED_DETAIL, System.currentTimeMillis())
+            }
+            _uiState.update { it.copy(notice = QueueNotice.SHARE_FAILED) }
         }
     }
 
-    /** The user paid this QR directly in their banking app, without a hand-off. */
-    fun onPaymentAlreadyCompletedInBank() {
-        updateQueue { queue -> queue.handOffCurrent() }
-    }
+    // ---- user confirmation --------------------------------------------------
 
-    /** Explicit "Payment successful" — the only path to a paid item. */
-    fun onConfirmSuccess() {
-        updateQueue { queue -> queue.confirmSuccess(System.currentTimeMillis()) }
-    }
-
-    /** Explicit "Payment failed". */
-    fun onConfirmFailure() {
-        updateQueue { queue -> queue.confirmFailure(System.currentTimeMillis()) }
+    /**
+     * Explicit "this payment is done". The only path to a completed item, and it
+     * also covers the user resolving an UNKNOWN result after checking their bank
+     * app.
+     */
+    fun onConfirmCompleted() {
+        val queue = _uiState.value.queue ?: return
+        val item = queue.currentItem ?: return
+        val nowMillis = System.currentTimeMillis()
+        val updated = when (item.status) {
+            PaymentStatus.WAITING_USER -> queue.confirmCompleted(nowMillis)
+            PaymentStatus.UNKNOWN -> queue.resolveUnknownCompleted(nowMillis)
+            else -> return
+        }
+        _uiState.update { it.copy(confirmationDismissedFor = null) }
+        persist(updated)
     }
 
     /**
-     * "Something went wrong": the result is unknown, the queue waits for the
-     * user, and nothing is retried automatically.
+     * "Not done yet": the queue does not advance and the item stays retryable.
+     * This only changes what the screen shows; the item remains in
+     * [PaymentStatus.WAITING_USER] so it can be shared again on purpose.
      */
-    fun onReportUnknown() {
-        updateQueue { queue -> queue.reportUnknown() }
+    fun onConfirmNotCompleted() {
+        val queue = _uiState.value.queue ?: return
+        val item = queue.currentItem ?: return
+        if (item.status != PaymentStatus.WAITING_USER) return
+        _uiState.update { it.copy(confirmationDismissedFor = item.id) }
+        persist(queue.confirmNotCompleted(System.currentTimeMillis()))
     }
 
-    /** Resolves an UNKNOWN result with what actually happened in the bank app. */
-    fun onResolveUnknown(success: Boolean) {
-        updateQueue { queue -> queue.resolveUnknown(success, System.currentTimeMillis()) }
+    /**
+     * Explicit retry of a FAILED or UNKNOWN item. The item goes back to the queue
+     * and nothing is shared until the user asks for it.
+     */
+    fun onRetryCurrent() {
+        val queue = _uiState.value.queue ?: return
+        _uiState.update { it.copy(confirmationDismissedFor = null) }
+        persist(queue.retryCurrent(System.currentTimeMillis()))
     }
 
     // ---- housekeeping -------------------------------------------------------
@@ -369,15 +371,17 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 clearConfirmationVisible = false,
-                startConfirmationVisible = false,
                 reShareConfirmationVisible = false,
+                confirmationDismissedFor = null,
                 imageIntent = null,
                 importing = false,
             )
         }
         scope.launch {
             withContext(Dispatchers.IO) { repository.clearQueue() }
-            _uiState.update { it.copy(queue = null, importProgress = null, notice = QueueNotice.QUEUE_CLEARED) }
+            _uiState.update {
+                it.copy(queue = null, importProgress = null, notice = QueueNotice.QUEUE_CLEARED)
+            }
         }
     }
 
@@ -385,22 +389,12 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(notice = null) }
     }
 
-    private fun currentItem(): QueueItem? = _uiState.value.queue?.currentItem
+    // ---- internals ----------------------------------------------------------
 
-    private fun requestImageIntent(kind: ImageIntentKind, item: QueueItem, mimeType: String?) {
-        val storedPath = item.storedImagePath ?: return
-        val type = mimeType ?: ShareTargets.ANY_IMAGE_MIME_TYPE
-        _uiState.update {
-            it.copy(
-                imageIntent = ImageIntentRequest(
-                    kind = kind,
-                    itemId = item.id,
-                    filePath = storedPath,
-                    mimeType = type,
-                    fileName = item.fileName,
-                ),
-            )
-        }
+    /** Records a known error on the current item and tells the user why. */
+    private fun failCurrent(detail: String, notice: QueueNotice) {
+        updateQueue { queue -> queue.failCurrent(detail, System.currentTimeMillis()) }
+        _uiState.update { it.copy(notice = notice) }
     }
 
     /** Persists the result of a queue transition before the UI shows it. */
@@ -429,13 +423,15 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Removes image copies that no queue item references any more. */
     private fun sweepOrphanImages(queue: PaymentQueue) {
-        val referenced = queue.items.mapNotNull { item -> item.storedImagePath }.toSet()
+        val referenced = queue.items.map { item -> item.storedImagePath }.toSet()
         scope.launch {
             withContext(Dispatchers.IO) { repository.sweepOrphanImages(referenced) }
         }
     }
 
     private companion object {
-        const val DEFAULT_FILE_NAME = "QR image"
+        const val MISSING_IMAGE_DETAIL = "The imported image file is missing from this device."
+        const val SHARE_FAILED_DETAIL = "Android's share sheet could not be opened."
+        const val INTERRUPTED_DETAIL = "The app stopped while this image was being handed off."
     }
 }

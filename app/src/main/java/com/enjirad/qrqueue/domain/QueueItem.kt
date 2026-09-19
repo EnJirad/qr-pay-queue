@@ -1,45 +1,38 @@
 package com.enjirad.qrqueue.domain
 
 /**
- * One payment task in the queue.
+ * One image in the queue.
  *
- * A queue item always comes from one image the user selected. The image is
- * copied into app-private storage ([storedImagePath]); the original gallery
- * image is never moved or deleted. Every payload field is either read from the
- * QR or left null — the app never invents an amount, recipient or reference.
+ * V0.4 does not decode QR codes, so an item carries nothing about the payment:
+ * it is just the app's own copy of one image the user picked, plus where it
+ * stands in the queue. There is deliberately no decoded payload, recipient,
+ * amount, reference, merchant or validation result on this model — K PLUS reads
+ * the QR and the user verifies everything inside K PLUS.
  *
- * @param sourceUri the picker URI this item was imported from.
- * @param storedImagePath app-private copy of the image that is actually used.
- * @param amountSatang amount in satang (1 THB = 100 satang), or null when the
- *   QR does not carry an amount.
- * @param issue set when the item was rejected during validation.
+ * @param sourceUri the picker URI the image was imported from (reference only;
+ *   the original gallery file is never moved, changed or deleted).
+ * @param storedImagePath app-private copy of the image that is actually shared.
+ * @param displayName the original file name, for display only.
+ * @param position 0-based order of this item in the queue.
+ * @param status where this item is in the hand-off flow.
+ * @param createdAt when the image was imported (wall clock, millis).
+ * @param updatedAt when this item last changed (wall clock, millis).
+ * @param failureDetail a short diagnostic reason shown when [status] is
+ *   [PaymentStatus.FAILED]. It is never payment data and is never read from the
+ *   image; it only tells the user why the hand-off could not start.
  */
 data class QueueItem(
     val id: String,
-    val fileName: String,
-    val sourceUri: String? = null,
-    val storedImagePath: String? = null,
-    val mimeType: String? = null,
-    val amountSatang: Long? = null,
-    val recipient: String? = null,
-    val reference: String? = null,
-    val status: PaymentStatus = PaymentStatus.DISCOVERED,
-    /** Why this item is not payable (invalid QR, duplicate, …). */
-    val issue: ValidationIssue? = null,
-    /** Diagnostic detail for [issue]; never shown as a payment value. */
-    val issueDetail: String? = null,
-    /** Which QR format produced this item, e.g. `PromptPay`. */
-    val payloadLabel: String? = null,
-    /** The decoded payload text, kept for duplicate detection and debugging. */
-    val rawPayload: String? = null,
-    /** When this image was imported (wall clock, millis). */
-    val importedAtMillis: Long? = null,
-    /** When the user recorded a final result for this item, if they have. */
-    val decidedAtMillis: Long? = null,
+    val position: Int,
+    val sourceUri: String,
+    val storedImagePath: String,
+    val displayName: String,
+    val mimeType: String,
+    val status: PaymentStatus = PaymentStatus.QUEUED,
+    val createdAt: Long = 0L,
+    val updatedAt: Long = 0L,
+    val failureDetail: String? = null,
 ) {
-    /** True when the queue knows how much this item is for. */
-    val hasKnownAmount: Boolean get() = amountSatang != null
-
-    /** True when this item takes part in the sequential payment run. */
-    val isPayable: Boolean get() = !status.isExcludedFromQueue
+    /** True while the item still needs work from the user. */
+    val isActive: Boolean get() = status.isActive
 }

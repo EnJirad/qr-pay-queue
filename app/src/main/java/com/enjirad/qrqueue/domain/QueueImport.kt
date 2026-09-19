@@ -4,7 +4,8 @@ import java.util.UUID
 
 /**
  * Pure helpers for the multi-image import step: selected-URI de-duplication,
- * file naming and turning a validation outcome into a queue item.
+ * storage file naming and turning one successfully copied image into a queue
+ * item. Nothing here reads or inspects the image content.
  */
 object QueueImport {
 
@@ -57,54 +58,29 @@ object QueueImport {
     }
 
     /**
-     * Builds the queue item for one imported image.
-     *
-     * An accepted payload becomes a [PaymentStatus.READY] item with everything
-     * the QR actually contained. A rejected image becomes an item carrying the
-     * specific issue and the status that issue maps to — it stays visible in the
-     * review list instead of disappearing.
+     * Builds the queue item for one image that was successfully copied into
+     * app-private storage. The image starts as [PaymentStatus.QUEUED]; the app
+     * knows nothing about what the QR contains, and that is intentional.
      */
     fun buildItem(
         id: String,
-        fileName: String,
-        sourceUri: String?,
-        storedImagePath: String?,
-        mimeType: String?,
-        outcome: ItemOutcome,
-        importedAtMillis: Long,
-    ): QueueItem = when (outcome) {
-        is ItemOutcome.Accepted -> QueueItem(
-            id = id,
-            fileName = fileName,
-            sourceUri = sourceUri,
-            storedImagePath = storedImagePath,
-            mimeType = mimeType,
-            amountSatang = outcome.payload.amountSatang,
-            recipient = outcome.payload.recipient,
-            reference = outcome.payload.reference,
-            status = PaymentStatus.READY,
-            issue = null,
-            payloadLabel = outcome.payload.format.label,
-            rawPayload = outcome.payload.raw,
-            importedAtMillis = importedAtMillis,
-        )
-        is ItemOutcome.Rejected -> QueueItem(
-            id = id,
-            fileName = fileName,
-            sourceUri = sourceUri,
-            storedImagePath = storedImagePath,
-            mimeType = mimeType,
-            amountSatang = null,
-            recipient = null,
-            reference = null,
-            status = outcome.issue.status,
-            issue = outcome.issue,
-            issueDetail = outcome.detail,
-            payloadLabel = null,
-            rawPayload = null,
-            importedAtMillis = importedAtMillis,
-        )
-    }
+        position: Int,
+        sourceUri: String,
+        storedImagePath: String,
+        displayName: String,
+        mimeType: String,
+        nowMillis: Long,
+    ): QueueItem = QueueItem(
+        id = id,
+        position = position,
+        sourceUri = sourceUri,
+        storedImagePath = storedImagePath,
+        displayName = displayName,
+        mimeType = mimeType,
+        status = PaymentStatus.QUEUED,
+        createdAt = nowMillis,
+        updatedAt = nowMillis,
+    )
 
     private const val DEFAULT_EXTENSION = "img"
 }

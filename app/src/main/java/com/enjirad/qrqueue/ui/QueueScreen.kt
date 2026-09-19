@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -70,7 +71,6 @@ import com.enjirad.qrqueue.data.ShareTargets
 import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueItem
-import com.enjirad.qrqueue.domain.formatSatang
 import com.enjirad.qrqueue.ui.theme.QrQueueTheme
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -79,18 +79,13 @@ import kotlinx.coroutines.withContext
 /** Every action the queue screen can raise; the route wires them to the ViewModel. */
 data class QueueCallbacks(
     val onImportImages: () -> Unit,
-    val onStartRequested: () -> Unit,
-    val onStartConfirmed: () -> Unit,
-    val onStartDismissed: () -> Unit,
     val onShareCurrent: () -> Unit,
-    val onViewQr: () -> Unit,
-    val onAlreadyPaid: () -> Unit,
+    val onViewCurrent: () -> Unit,
     val onReShareConfirmed: () -> Unit,
     val onReShareDismissed: () -> Unit,
-    val onConfirmSuccess: () -> Unit,
-    val onConfirmFailure: () -> Unit,
-    val onReportUnknown: () -> Unit,
-    val onResolveUnknown: (Boolean) -> Unit,
+    val onConfirmCompleted: () -> Unit,
+    val onConfirmNotCompleted: () -> Unit,
+    val onRetryCurrent: () -> Unit,
     val onClearRequested: () -> Unit,
     val onClearConfirmed: () -> Unit,
     val onClearDismissed: () -> Unit,
@@ -127,18 +122,13 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                 )
             },
-            onStartRequested = viewModel::onStartRequested,
-            onStartConfirmed = viewModel::onStartConfirmed,
-            onStartDismissed = viewModel::onStartConfirmationDismissed,
-            onShareCurrent = viewModel::onShareQrRequested,
-            onViewQr = viewModel::onViewQrRequested,
-            onAlreadyPaid = viewModel::onPaymentAlreadyCompletedInBank,
+            onShareCurrent = viewModel::onShareCurrentRequested,
+            onViewCurrent = viewModel::onViewCurrentRequested,
             onReShareConfirmed = viewModel::onReShareConfirmed,
             onReShareDismissed = viewModel::onReShareDismissed,
-            onConfirmSuccess = viewModel::onConfirmSuccess,
-            onConfirmFailure = viewModel::onConfirmFailure,
-            onReportUnknown = viewModel::onReportUnknown,
-            onResolveUnknown = viewModel::onResolveUnknown,
+            onConfirmCompleted = viewModel::onConfirmCompleted,
+            onConfirmNotCompleted = viewModel::onConfirmNotCompleted,
+            onRetryCurrent = viewModel::onRetryCurrent,
             onClearRequested = viewModel::onClearQueueRequested,
             onClearConfirmed = viewModel::onClearQueueConfirmed,
             onClearDismissed = viewModel::onClearQueueDismissed,
@@ -148,8 +138,8 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
 }
 
 /**
- * Hands the stored QR image to another app (share chooser) or opens it in a
- * viewer. Returns false when nothing could be opened.
+ * Hands the stored image to another app (share chooser) or opens it in a viewer.
+ * Returns false when nothing could be opened.
  */
 private fun launchImageIntent(context: Context, request: ImageIntentRequest): Boolean {
     val file = File(request.filePath)
@@ -172,11 +162,10 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
     val snackbarHostState = remember { SnackbarHostState() }
     val noticeMessage = when (state.notice) {
         QueueNotice.IMAGES_NOT_IMPORTED -> stringResource(R.string.notice_images_not_imported)
-        QueueNotice.QUEUE_ALREADY_RUNNING -> stringResource(R.string.notice_queue_running)
-        QueueNotice.NOTHING_TO_PAY -> stringResource(R.string.notice_nothing_to_pay)
         QueueNotice.SHARE_FAILED -> stringResource(R.string.notice_share_failed)
         QueueNotice.SHARE_TARGET_UNAVAILABLE -> stringResource(R.string.notice_share_target_unavailable)
         QueueNotice.VIEW_TARGET_UNAVAILABLE -> stringResource(R.string.notice_view_target_unavailable)
+        QueueNotice.IMAGE_MISSING -> stringResource(R.string.notice_image_missing)
         QueueNotice.QUEUE_NOT_SAVED -> stringResource(R.string.notice_queue_not_saved)
         QueueNotice.QUEUE_CLEARED -> stringResource(R.string.notice_queue_cleared)
         null -> null
@@ -217,17 +206,11 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         ) {
             AppHeader()
             val queue = state.queue
-            if (state.importing) {
-                ImportProgressCard(progress = state.importProgress)
-            } else if (queue == null) {
-                HomeContent(onImportImages = callbacks.onImportImages)
-            } else {
-                when (state.stage) {
-                    QueueStage.REVIEW -> ReviewContent(queue, state.startConfirmationVisible, callbacks)
-                    QueueStage.PROCESSING -> ProcessingContent(queue, callbacks)
-                    QueueStage.SUMMARY -> SummaryContent(queue, callbacks)
-                    QueueStage.HOME -> HomeContent(onImportImages = callbacks.onImportImages)
-                }
+            when {
+                state.importing -> ImportProgressCard(progress = state.importProgress)
+                queue == null -> HomeContent(onImportImages = callbacks.onImportImages)
+                state.stage == QueueStage.FINISHED -> FinishedContent(queue, callbacks)
+                else -> QueueContent(queue, state.confirmationDismissedFor, callbacks)
             }
             SafetyCard()
             Text(
@@ -287,7 +270,7 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
@@ -307,12 +290,12 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
 private fun StatusChip(status: PaymentStatus) {
     val colors = MaterialTheme.colorScheme
     val background = when {
-        status.isPaid -> colors.primaryContainer
+        status.isCompleted -> colors.primaryContainer
         status.isError -> colors.errorContainer
         else -> colors.secondaryContainer
     }
     val content = when {
-        status.isPaid -> colors.onPrimaryContainer
+        status.isCompleted -> colors.onPrimaryContainer
         status.isError -> colors.onErrorContainer
         else -> colors.onSecondaryContainer
     }
@@ -506,284 +489,69 @@ private fun ImportProgressCard(progress: ImportProgress?) {
     }
 }
 
-// ---- review -----------------------------------------------------------------
+// ---- queue ------------------------------------------------------------------
 
 @Composable
-private fun ReviewContent(
+private fun QueueContent(
     queue: PaymentQueue,
-    startConfirmationVisible: Boolean,
+    confirmationDismissedFor: String?,
     callbacks: QueueCallbacks,
 ) {
     SectionTitle(
         text = stringResource(R.string.queue_section_title),
-        badge = stringResource(R.string.queue_badge_count, queue.queueableCount),
+        badge = stringResource(R.string.queue_badge_count, queue.itemCount),
     )
 
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         StatCard(
-            label = stringResource(R.string.stat_in_queue),
-            value = queue.queueableCount.toString(),
+            label = stringResource(R.string.stat_completed),
+            value = queue.completedCount.toString(),
             modifier = Modifier.weight(1f),
         )
         StatCard(
-            label = stringResource(R.string.stat_total_amount),
-            value = formatSatang(queue.queuedSatang),
+            label = stringResource(R.string.stat_remaining),
+            value = queue.remainingCount.toString(),
             modifier = Modifier.weight(1f),
         )
     }
 
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            LabelValueRow(stringResource(R.string.label_ready), queue.readyCount.toString())
-            LabelValueRow(stringResource(R.string.label_invalid), queue.invalidCount.toString())
-            LabelValueRow(stringResource(R.string.label_duplicates), queue.duplicateCount.toString())
-            if (queue.excludedItems.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.review_excluded_note, queue.excludedItems.size),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (queue.amountMissingCount > 0) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.review_amount_missing_note, queue.amountMissingCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-
     Text(
-        text = stringResource(R.string.review_start_hint),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-
-    queue.items.forEachIndexed { index, item ->
-        QueueItemCard(ordinal = index + 1, item = item)
-    }
-
-    if (startConfirmationVisible) {
-        StartConfirmationCard(
-            queue = queue,
-            onStart = callbacks.onStartConfirmed,
-            onDismiss = callbacks.onStartDismissed,
-        )
-    } else {
-        Button(
-            onClick = callbacks.onStartRequested,
-            enabled = queue.canStart,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.action_start_queue),
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-        if (!queue.canStart) {
-            Text(
-                text = stringResource(R.string.notice_nothing_to_pay),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TextButton(
-            onClick = callbacks.onImportImages,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                text = stringResource(R.string.action_import_more),
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-        TextButton(
-            onClick = callbacks.onClearRequested,
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                text = stringResource(R.string.action_clear_queue),
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-    }
-}
-
-@Composable
-private fun QueueItemCard(ordinal: Int, item: QueueItem) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = ordinal.toString().padStart(2, '0'),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(34.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.fileName,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val subtitle = listOfNotNull(item.recipient, item.payloadLabel).joinToString(" · ")
-                if (subtitle.isNotEmpty()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                val issue = item.issue
-                if (issue != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = issue.label,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = item.amountSatang?.let(::formatSatang)
-                        ?: stringResource(R.string.item_unknown_value),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Spacer(Modifier.height(4.dp))
-                StatusChip(status = item.status)
-            }
-        }
-    }
-}
-
-@Composable
-private fun StartConfirmationCard(
-    queue: PaymentQueue,
-    onStart: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                text = stringResource(R.string.start_confirm_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = stringResource(R.string.start_confirm_ready, queue.readyCount),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                text = stringResource(R.string.start_confirm_total, formatSatang(queue.queuedSatang)),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                text = stringResource(R.string.start_confirm_invalid, queue.invalidCount),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                text = stringResource(R.string.start_confirm_duplicates, queue.duplicateCount),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = stringResource(R.string.start_confirm_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Spacer(Modifier.height(14.dp))
-            Button(
-                onClick = onStart,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.action_start_confirm),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text(text = stringResource(R.string.action_cancel))
-            }
-        }
-    }
-}
-
-// ---- processing -------------------------------------------------------------
-
-@Composable
-private fun ProcessingContent(queue: PaymentQueue, callbacks: QueueCallbacks) {
-    val item = queue.currentItem ?: return
-
-    Text(
-        text = stringResource(R.string.processing_title, queue.currentOrdinal, queue.queueableCount),
-        style = MaterialTheme.typography.titleLarge,
+        text = stringResource(R.string.processing_title, queue.currentOrdinal, queue.itemCount),
+        style = MaterialTheme.typography.titleMedium,
     )
     LinearProgressIndicator(
         progress = { queue.progressFraction },
         modifier = Modifier.fillMaxWidth(),
     )
 
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        StatCard(
-            label = stringResource(R.string.processing_completed),
-            value = "${queue.paidCount}/${queue.queueableCount} · ${formatSatang(queue.paidSatang)}",
-            modifier = Modifier.weight(1f),
-        )
-        StatCard(
-            label = stringResource(R.string.processing_remaining),
-            value = "${queue.remainingCount} · ${formatSatang(queue.remainingSatang)}",
-            modifier = Modifier.weight(1f),
-        )
+    queue.items.forEach { item ->
+        QueueItemRow(item = item, isCurrent = item.id == queue.currentItem?.id)
     }
 
-    CurrentItemCard(item = item)
+    val current = queue.currentItem ?: return
+    CurrentItemCard(item = current)
+    when (current.status) {
+        PaymentStatus.QUEUED -> QueuedActions(item = current, callbacks = callbacks)
+        PaymentStatus.SHARING -> SharingCard()
+        PaymentStatus.WAITING_USER -> WaitingActions(
+            confirmationDismissed = confirmationDismissedFor == current.id,
+            callbacks = callbacks,
+        )
+        PaymentStatus.FAILED -> FailedActions(item = current, callbacks = callbacks)
+        PaymentStatus.UNKNOWN -> UnknownActions(callbacks = callbacks)
+        PaymentStatus.COMPLETED -> Unit
+    }
 
-    when {
-        item.status == PaymentStatus.READY -> ReadyActions(item = item, callbacks = callbacks)
-        item.status == PaymentStatus.UNKNOWN -> UnknownActions(callbacks = callbacks)
-        else -> ConfirmationActions(callbacks = callbacks)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextButton(onClick = callbacks.onImportImages, modifier = Modifier.weight(1f)) {
+            Text(text = stringResource(R.string.action_import_more))
+        }
+        TextButton(onClick = callbacks.onClearRequested, modifier = Modifier.weight(1f)) {
+            Text(text = stringResource(R.string.action_clear_queue))
+        }
     }
 
     Text(
@@ -791,6 +559,57 @@ private fun ProcessingContent(queue: PaymentQueue, callbacks: QueueCallbacks) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.outline,
     )
+}
+
+@Composable
+private fun QueueItemRow(item: QueueItem, isCurrent: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (isCurrent) {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = (item.position + 1).toString().padStart(2, '0'),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(34.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (isCurrent) {
+                    Text(
+                        text = stringResource(R.string.item_current_label),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else if (item.status == PaymentStatus.FAILED && item.failureDetail != null) {
+                    Text(
+                        text = item.failureDetail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            StatusChip(status = item.status)
+        }
+    }
 }
 
 @Composable
@@ -804,24 +623,8 @@ private fun CurrentItemCard(item: QueueItem) {
         Column(modifier = Modifier.padding(20.dp)) {
             QrImagePreview(path = item.storedImagePath)
             Spacer(Modifier.height(16.dp))
-            LabelValueRow(
-                label = stringResource(R.string.label_recipient),
-                value = item.recipient ?: stringResource(R.string.item_unknown_value),
-            )
-            LabelValueRow(
-                label = stringResource(R.string.label_amount),
-                value = item.amountSatang?.let(::formatSatang)
-                    ?: stringResource(R.string.amount_missing_value),
-            )
-            val reference = item.reference
-            if (reference != null) {
-                LabelValueRow(label = stringResource(R.string.label_reference), value = reference)
-            }
-            val payloadLabel = item.payloadLabel
-            if (payloadLabel != null) {
-                LabelValueRow(label = stringResource(R.string.label_qr_format), value = payloadLabel)
-            }
-            LabelValueRow(label = stringResource(R.string.label_image), value = item.fileName)
+            LabelValueRow(label = stringResource(R.string.label_image), value = item.displayName)
+            LabelValueRow(label = stringResource(R.string.label_position), value = (item.position + 1).toString())
             Spacer(Modifier.height(10.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
             Spacer(Modifier.height(10.dp))
@@ -841,7 +644,7 @@ private fun CurrentItemCard(item: QueueItem) {
 @Composable
 private fun QrImagePreview(path: String?) {
     val image by produceState<ImageBitmap?>(initialValue = null, key1 = path) {
-        value = if (path == null) {
+        value = if (path.isNullOrEmpty()) {
             null
         } else {
             withContext(Dispatchers.IO) {
@@ -865,7 +668,7 @@ private fun QrImagePreview(path: String?) {
             val bitmap = image
             if (bitmap == null) {
                 Text(
-                    text = stringResource(R.string.item_unknown_value),
+                    text = stringResource(R.string.image_unavailable),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(vertical = 100.dp),
@@ -885,7 +688,7 @@ private fun QrImagePreview(path: String?) {
 }
 
 @Composable
-private fun ReadyActions(item: QueueItem, callbacks: QueueCallbacks) {
+private fun QueuedActions(item: QueueItem, callbacks: QueueCallbacks) {
     val context = LocalContext.current
     // Describes the real share sheet on this device; never forces a target.
     val targets = remember(item.id, item.mimeType) {
@@ -899,7 +702,12 @@ private fun ReadyActions(item: QueueItem, callbacks: QueueCallbacks) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = stringResource(R.string.processing_ready_body),
+                text = stringResource(R.string.queued_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.queued_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -941,31 +749,50 @@ private fun ReadyActions(item: QueueItem, callbacks: QueueCallbacks) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = stringResource(R.string.action_share_qr),
+                    text = stringResource(R.string.action_share),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
             Spacer(Modifier.height(4.dp))
-            TextButton(onClick = callbacks.onAlreadyPaid, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = callbacks.onViewCurrent, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = stringResource(R.string.action_already_paid),
+                    text = stringResource(R.string.action_view_image),
                     style = MaterialTheme.typography.bodySmall,
                 )
-            }
-            if (!targets.canShare) {
-                TextButton(onClick = callbacks.onViewQr, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = stringResource(R.string.action_view_qr),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
             }
         }
     }
 }
 
 @Composable
-private fun ConfirmationActions(callbacks: QueueCallbacks) {
+private fun SharingCard() {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = stringResource(R.string.sharing_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.sharing_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
+}
+
+/**
+ * Shown when the image was handed to the share sheet / K PLUS. The user — not the
+ * app — decides whether the payment is done.
+ */
+@Composable
+private fun WaitingActions(confirmationDismissed: Boolean, callbacks: QueueCallbacks) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -973,19 +800,27 @@ private fun ConfirmationActions(callbacks: QueueCallbacks) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = stringResource(R.string.processing_waiting_title),
+                text = if (confirmationDismissed) {
+                    stringResource(R.string.waiting_title)
+                } else {
+                    stringResource(R.string.confirm_question)
+                },
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = stringResource(R.string.processing_waiting_question),
+                text = if (confirmationDismissed) {
+                    stringResource(R.string.waiting_body)
+                } else {
+                    stringResource(R.string.confirm_body)
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
             Spacer(Modifier.height(14.dp))
             Button(
-                onClick = callbacks.onConfirmSuccess,
+                onClick = callbacks.onConfirmCompleted,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -998,28 +833,81 @@ private fun ConfirmationActions(callbacks: QueueCallbacks) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = stringResource(R.string.action_confirm_success),
+                    text = stringResource(R.string.action_confirm_completed),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = callbacks.onConfirmFailure,
+                onClick = if (confirmationDismissed) {
+                    callbacks.onShareCurrent
+                } else {
+                    callbacks.onConfirmNotCompleted
+                },
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.action_confirm_failure),
+                    text = if (confirmationDismissed) {
+                        stringResource(R.string.action_reshare)
+                    } else {
+                        stringResource(R.string.not_now)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FailedActions(item: QueueItem, callbacks: QueueCallbacks) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.failed_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = item.failureDetail ?: stringResource(R.string.failed_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = callbacks.onShareCurrent,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.action_try_again),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
             Spacer(Modifier.height(4.dp))
-            TextButton(onClick = callbacks.onReportUnknown, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = callbacks.onViewCurrent, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = stringResource(R.string.action_confirm_unknown),
-                    style = MaterialTheme.typography.labelLarge,
+                    text = stringResource(R.string.action_view_image),
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
@@ -1043,46 +931,46 @@ private fun UnknownActions(callbacks: QueueCallbacks) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = stringResource(R.string.processing_unknown_title),
+                    text = stringResource(R.string.unknown_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = stringResource(R.string.processing_unknown_body),
+                text = stringResource(R.string.unknown_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = stringResource(R.string.processing_unknown_note),
+                text = stringResource(R.string.unknown_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Spacer(Modifier.height(14.dp))
             Button(
-                onClick = { callbacks.onResolveUnknown(true) },
+                onClick = callbacks.onConfirmCompleted,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.action_confirm_success),
+                    text = stringResource(R.string.action_confirm_completed),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = { callbacks.onResolveUnknown(false) },
+                onClick = callbacks.onRetryCurrent,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.action_confirm_failure),
+                    text = stringResource(R.string.action_retry),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
@@ -1090,10 +978,10 @@ private fun UnknownActions(callbacks: QueueCallbacks) {
     }
 }
 
-// ---- summary ----------------------------------------------------------------
+// ---- finished ---------------------------------------------------------------
 
 @Composable
-private fun SummaryContent(queue: PaymentQueue, callbacks: QueueCallbacks) {
+private fun FinishedContent(queue: PaymentQueue, callbacks: QueueCallbacks) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -1121,36 +1009,8 @@ private fun SummaryContent(queue: PaymentQueue, callbacks: QueueCallbacks) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            LabelValueRow(stringResource(R.string.summary_completed), queue.processedCount.toString())
-            LabelValueRow(stringResource(R.string.summary_successful), queue.paidCount.toString())
-            LabelValueRow(stringResource(R.string.summary_failed), queue.failedCount.toString())
-            LabelValueRow(stringResource(R.string.summary_unknown), queue.unknownCount.toString())
-            if (queue.invalidCount > 0) {
-                LabelValueRow(stringResource(R.string.summary_invalid), queue.invalidCount.toString())
-            }
-            if (queue.duplicateCount > 0) {
-                LabelValueRow(stringResource(R.string.summary_duplicates), queue.duplicateCount.toString())
-            }
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
-            Spacer(Modifier.height(12.dp))
-            LabelValueRow(
-                label = stringResource(R.string.summary_total_paid),
-                value = formatSatang(queue.paidSatang),
-                emphasized = true,
-            )
-            LabelValueRow(
-                label = stringResource(R.string.summary_total_queued),
-                value = formatSatang(queue.queuedSatang),
-            )
-            if (queue.amountMissingCount > 0) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.summary_amount_missing_note, queue.amountMissingCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            LabelValueRow(stringResource(R.string.summary_images), queue.itemCount.toString())
+            LabelValueRow(stringResource(R.string.summary_completed), queue.completedCount.toString())
         }
     }
 
@@ -1171,7 +1031,7 @@ private fun SummaryContent(queue: PaymentQueue, callbacks: QueueCallbacks) {
 // ---- shared pieces ----------------------------------------------------------
 
 @Composable
-private fun LabelValueRow(label: String, value: String, emphasized: Boolean = false) {
+private fun LabelValueRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1187,11 +1047,8 @@ private fun LabelValueRow(label: String, value: String, emphasized: Boolean = fa
         Spacer(Modifier.width(12.dp))
         Text(
             text = value,
-            style = if (emphasized) {
-                MaterialTheme.typography.titleMedium
-            } else {
-                MaterialTheme.typography.bodyMedium
-            },
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1.4f),
         )
@@ -1286,18 +1143,13 @@ private fun QueueScreenEmptyPreview() {
 /** Preview-only callback set: no behavior, no data. */
 private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onImportImages = {},
-    onStartRequested = {},
-    onStartConfirmed = {},
-    onStartDismissed = {},
     onShareCurrent = {},
-    onViewQr = {},
-    onAlreadyPaid = {},
+    onViewCurrent = {},
     onReShareConfirmed = {},
     onReShareDismissed = {},
-    onConfirmSuccess = {},
-    onConfirmFailure = {},
-    onReportUnknown = {},
-    onResolveUnknown = { _ -> },
+    onConfirmCompleted = {},
+    onConfirmNotCompleted = {},
+    onRetryCurrent = {},
     onClearRequested = {},
     onClearConfirmed = {},
     onClearDismissed = {},

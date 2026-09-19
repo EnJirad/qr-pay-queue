@@ -7,7 +7,6 @@ import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueImport
 import com.enjirad.qrqueue.domain.QueueItem
-import com.enjirad.qrqueue.domain.ValidationIssue
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,13 +23,16 @@ data class StoredImage(
  * The single owner of everything this app writes to disk:
  *
  * ```
- * filesDir/qrqueue/queue.json          the queue state (id, items, statuses)
- * filesDir/qrqueue/images/<itemId>.png imported copies of the selected images
+ * filesDir/qrqueue/queue.json              the queue state (id, items, statuses)
+ * filesDir/qrqueue/images/<itemId>.img     imported copies of the selected images
  * ```
  *
  * Importing copies the picked image into the app; the gallery original is never
  * moved, renamed or deleted. A queue is self-contained: clearing it removes only
  * these app-private files.
+ *
+ * V0.4 stores no QR content at all — only the image location, the queue order
+ * and where each item stands in the hand-off flow.
  */
 class QueueRepository(private val context: Context) {
 
@@ -40,7 +42,8 @@ class QueueRepository(private val context: Context) {
      * Copies a picked image into app-private storage.
      *
      * @return the stored copy, or null when the image could not be read or the
-     *   copy could not be written (the caller records that honestly).
+     *   copy could not be written. The caller reports that honestly and does not
+     *   create a queue item for a file that does not exist.
      */
     fun importImage(uri: Uri, itemId: String): StoredImage? {
         val resolver = context.contentResolver
@@ -94,15 +97,38 @@ class QueueRepository(private val context: Context) {
 
     // ---- queue state --------------------------------------------------------
 
-    /** Reads the persisted queue, or null when there is none / it is unreadable. */
+    /**
+     * Reads the persisted queue, or null when there is none / it is unreadable.
+     *
+     * An item whose stored image no longer exists is marked [PaymentStatus.FAILED]
+     * instead of crashing the app or pretending the item can be shared, so the
+     * queue screen can explain what happened.
+     */
     fun loadQueue(): PaymentQueue? {
         val file = stateFile()
         if (!file.isFile) return null
-        return runCatching { parseQueue(JSONObject(file.readText())) }.getOrNull()
+        return runCatching { parseQueue(JSONObject(file.readText())) }
+            .getOrNull()
+            ?.let { queue ->
+                queue.copy(
+                    items = queue.items.map { item -> markMissingImage(item) },
+                ).normalized()
+            }
+    }
+
+    /** An active item whose image file is gone can never be shared. */
+    private fun markMissingImage(item: QueueItem): QueueItem = when {
+        item.status.isCompleted -> item
+        storedFile(item.storedImagePath) != null -> item
+        else -> item.copy(
+            status = PaymentStatus.FAILED,
+            failureDetail = "The imported image file is missing from this device.",
+        )
     }
 
     /**
-     * Persists the queue state, so recreation or backgrounding cannot lose it.
+     * Persists the queue state, so recreation, backgrounding or a restart cannot
+     * lose it.
      *
      * @return true when the state really reached disk; callers must tell the user
      *   when it did not, because a queue that cannot be persisted is a payment
@@ -147,66 +173,74 @@ class QueueRepository(private val context: Context) {
         put("version", SCHEMA_VERSION)
         put("queueId", queue.queueId)
         put("createdAt", queue.createdAt)
-        put("currentIndex", queue.currentIndex)
-        put("started", queue.started)
-        put("finished", queue.finished)
         put("updatedAtMillis", queue.updatedAtMillis)
-        put("items", JSONArray().apply { queue.items.forEach { put(serializeItem(it)) } })
+        put("items", JSONArray().apply { queue.items.sortedBy { it.position }.forEach { put(serializeItem(it)) } })
     }
 
     private fun serializeItem(item: QueueItem): JSONObject = JSONObject().apply {
         put("id", item.id)
-        put("fileName", item.fileName)
+        put("position", item.position)
         put("status", item.status.name)
-        putNullable("sourceUri", item.sourceUri)
-        putNullable("storedImagePath", item.storedImagePath)
-        putNullable("mimeType", item.mimeType)
-        putNullable("amountSatang", item.amountSatang)
-        putNullable("recipient", item.recipient)
-        putNullable("reference", item.reference)
-        putNullable("issue", item.issue?.name)
-        putNullable("issueDetail", item.issueDetail)
-        putNullable("payloadLabel", item.payloadLabel)
-        putNullable("rawPayload", item.rawPayload)
-        putNullable("importedAtMillis", item.importedAtMillis)
-        putNullable("decidedAtMillis", item.decidedAtMillis)
+        put("displayName", item.displayName)
+        put("sourceUri", item.sourceUri)
+        put("storedImagePath", item.storedImagePath)
+        put("mimeType", item.mimeType)
+        put("createdAt", item.createdAt)
+        put("updatedAt", item.updatedAt)
+        putNullable("failureDetail", item.failureDetail)
     }
 
     private fun parseQueue(json: JSONObject): PaymentQueue {
         val itemsJson = json.optJSONArray("items") ?: JSONArray()
         val items = (0 until itemsJson.length()).mapNotNull { index ->
-            itemsJson.optJSONObject(index)?.let { parseItem(it) }
+            itemsJson.optJSONObject(index)?.let { parseItem(it, index) }
         }
         return PaymentQueue(
-            queueId = json.optString("queueId"),
+            queueId = json.stringOrNull("queueId") ?: DEFAULT_QUEUE_ID,
             createdAt = json.optLong("createdAt"),
-            items = items,
-            currentIndex = json.optInt("currentIndex", PaymentQueue.NO_CURRENT_ITEM),
-            started = json.optBoolean("started", false),
-            finished = json.optBoolean("finished", false),
+            items = items.sortedBy { it.position },
             updatedAtMillis = json.optLong("updatedAtMillis", 0L),
         )
     }
 
-    private fun parseItem(json: JSONObject): QueueItem? {
+    /**
+     * Reads one item. The 0.3.x schema stored the same image facts under
+     * `fileName` and `importedAtMillis`; those are accepted so an existing queue
+     * still opens, and its QR-only fields (payload, amount, recipient, issue) are
+     * simply no longer read.
+     */
+    private fun parseItem(json: JSONObject, fallbackPosition: Int): QueueItem? {
         val id = json.stringOrNull("id") ?: return null
+        val storedImagePath = json.stringOrNull("storedImagePath").orEmpty()
+        val extension = storedImagePath.substringAfterLast('.', "")
         return QueueItem(
             id = id,
-            fileName = json.stringOrNull("fileName") ?: DEFAULT_DISPLAY_NAME,
-            sourceUri = json.stringOrNull("sourceUri"),
-            storedImagePath = json.stringOrNull("storedImagePath"),
-            mimeType = json.stringOrNull("mimeType"),
-            amountSatang = json.longOrNull("amountSatang"),
-            recipient = json.stringOrNull("recipient"),
-            reference = json.stringOrNull("reference"),
+            position = json.optInt("position", fallbackPosition),
+            sourceUri = json.stringOrNull("sourceUri").orEmpty(),
+            storedImagePath = storedImagePath,
+            displayName = json.stringOrNull("displayName")
+                ?: json.stringOrNull("fileName")
+                ?: DEFAULT_DISPLAY_NAME,
+            mimeType = json.stringOrNull("mimeType")
+                ?: QueueImport.mimeTypeForExtension(extension),
             status = paymentStatusOf(json.stringOrNull("status")),
-            issue = validationIssueOf(json.stringOrNull("issue")),
-            issueDetail = json.stringOrNull("issueDetail"),
-            payloadLabel = json.stringOrNull("payloadLabel"),
-            rawPayload = json.stringOrNull("rawPayload"),
-            importedAtMillis = json.longOrNull("importedAtMillis"),
-            decidedAtMillis = json.longOrNull("decidedAtMillis"),
+            createdAt = json.longOrNull("createdAt") ?: json.longOrNull("importedAtMillis") ?: 0L,
+            updatedAt = json.longOrNull("updatedAt") ?: 0L,
+            failureDetail = json.stringOrNull("failureDetail"),
         )
+    }
+
+    /** Maps a stored status name, including the pre-0.4 names, onto the V0.4 model. */
+    private fun paymentStatusOf(raw: String?): PaymentStatus {
+        if (raw == null) return PaymentStatus.QUEUED
+        PaymentStatus.entries.firstOrNull { it.name == raw }?.let { return it }
+        return when (raw) {
+            "SUCCESS", "PAID", "RECONCILED" -> PaymentStatus.COMPLETED
+            "SUBMITTED", "WAITING_CONFIRMATION" -> PaymentStatus.WAITING_USER
+            "PAYMENT_FAILED" -> PaymentStatus.FAILED
+            "UNKNOWN" -> PaymentStatus.UNKNOWN
+            else -> PaymentStatus.QUEUED
+        }
     }
 
     private fun JSONObject.putNullable(name: String, value: Any?) {
@@ -219,17 +253,14 @@ class QueueRepository(private val context: Context) {
     private fun JSONObject.longOrNull(name: String): Long? =
         if (isNull(name)) null else optLong(name)
 
-    private fun paymentStatusOf(raw: String?): PaymentStatus =
-        PaymentStatus.entries.firstOrNull { it.name == raw } ?: PaymentStatus.DISCOVERED
-
-    private fun validationIssueOf(raw: String?): ValidationIssue? =
-        raw?.let { name -> ValidationIssue.entries.firstOrNull { it.name == name } }
-
     private companion object {
         const val ROOT_DIR = "qrqueue"
         const val IMAGES_DIR = "images"
         const val STATE_FILE = "queue.json"
-        const val SCHEMA_VERSION = 1
+
+        /** Bumped from 1: the item model no longer carries QR data. */
+        const val SCHEMA_VERSION = 2
         const val DEFAULT_DISPLAY_NAME = "QR image"
+        const val DEFAULT_QUEUE_ID = "queue"
     }
 }
