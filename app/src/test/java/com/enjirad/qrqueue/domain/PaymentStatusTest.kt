@@ -8,31 +8,26 @@ import org.junit.Test
  * The status model is where the product's safety promises live, so the rules are
  * asserted directly: only the user's own confirmation completes an item, only one
  * item may hold the payment hand-off, and an item that may already have reached
- * K PLUS is never shared without a warning.
+ * the bank is never shared again without the user asking for it.
  */
 class PaymentStatusTest {
 
     @Test
     fun onlyTheUserConfirmedStateCountsAsCompleted() {
         assertTrue(PaymentStatus.COMPLETED.isCompleted)
-        listOf(
-            PaymentStatus.QUEUED,
-            PaymentStatus.SHARING,
-            PaymentStatus.WAITING_USER,
-            PaymentStatus.FAILED,
-            PaymentStatus.UNKNOWN,
-        ).forEach { status ->
-            assertFalse("${status.name} must not count as completed", status.isCompleted)
-        }
+        PaymentStatus.entries
+            .filter { it != PaymentStatus.COMPLETED }
+            .forEach { status ->
+                assertFalse("${status.name} must not count as completed", status.isCompleted)
+            }
     }
 
     @Test
-    fun sharingOrWaitingIsNeverTreatedAsAPayment() {
-        // Handing an image to K PLUS is not a payment.
+    fun handingTheImageToTheBankIsNeverAPayment() {
         assertFalse(PaymentStatus.SHARING.isCompleted)
-        assertFalse(PaymentStatus.WAITING_USER.isCompleted)
+        assertFalse(PaymentStatus.AWAITING_USER_CONFIRMATION.isCompleted)
         assertTrue(PaymentStatus.SHARING.isActive)
-        assertTrue(PaymentStatus.WAITING_USER.isActive)
+        assertTrue(PaymentStatus.AWAITING_USER_CONFIRMATION.isActive)
     }
 
     @Test
@@ -46,35 +41,37 @@ class PaymentStatusTest {
     }
 
     @Test
-    fun failedAndUnknownAreTheErrorStates() {
-        assertTrue(PaymentStatus.FAILED.isError)
-        assertTrue(PaymentStatus.UNKNOWN.isError)
+    fun onlyTheThreeRecoverableStatesAreProblems() {
+        assertTrue(PaymentStatus.UNKNOWN.isProblem)
+        assertTrue(PaymentStatus.REQUIRES_QR_REPLACEMENT.isProblem)
+        assertTrue(PaymentStatus.FAILED.isProblem)
         listOf(
-            PaymentStatus.QUEUED,
+            PaymentStatus.READY,
             PaymentStatus.SHARING,
-            PaymentStatus.WAITING_USER,
+            PaymentStatus.AWAITING_USER_CONFIRMATION,
             PaymentStatus.COMPLETED,
         ).forEach { status ->
-            assertFalse("${status.name} is not an error state", status.isError)
+            assertFalse("${status.name} is not a problem for the badge", status.isProblem)
         }
     }
 
     @Test
     fun onlyOneItemCanHoldThePaymentHandOff() {
         assertTrue(PaymentStatus.SHARING.holdsHandoff)
-        assertTrue(PaymentStatus.WAITING_USER.holdsHandoff)
+        assertTrue(PaymentStatus.AWAITING_USER_CONFIRMATION.holdsHandoff)
         assertTrue(PaymentStatus.UNKNOWN.holdsHandoff)
-        assertFalse(PaymentStatus.QUEUED.holdsHandoff)
-        // A failed hand-off never reached K PLUS, so nothing is in flight.
+        assertFalse(PaymentStatus.READY.holdsHandoff)
+        assertFalse(PaymentStatus.REQUIRES_QR_REPLACEMENT.holdsHandoff)
+        // A failed hand-off never reached the bank, so nothing is in flight.
         assertFalse(PaymentStatus.FAILED.holdsHandoff)
         assertFalse(PaymentStatus.COMPLETED.holdsHandoff)
     }
 
     @Test
-    fun onlyWaitingForTheUserAsksTheUserAQuestion() {
-        assertTrue(PaymentStatus.WAITING_USER.awaitsUserAnswer)
+    fun onlyTheAwaitingStateAsksTheUserAQuestion() {
+        assertTrue(PaymentStatus.AWAITING_USER_CONFIRMATION.awaitsUserAnswer)
         PaymentStatus.entries
-            .filter { it != PaymentStatus.WAITING_USER }
+            .filter { it != PaymentStatus.AWAITING_USER_CONFIRMATION }
             .forEach { status ->
                 assertFalse("${status.name} owes no payment answer", status.awaitsUserAnswer)
             }
@@ -85,9 +82,10 @@ class PaymentStatusTest {
         assertTrue(PaymentStatus.FAILED.isRetryable)
         assertTrue(PaymentStatus.UNKNOWN.isRetryable)
         listOf(
-            PaymentStatus.QUEUED,
+            PaymentStatus.READY,
             PaymentStatus.SHARING,
-            PaymentStatus.WAITING_USER,
+            PaymentStatus.AWAITING_USER_CONFIRMATION,
+            PaymentStatus.REQUIRES_QR_REPLACEMENT,
             PaymentStatus.COMPLETED,
         ).forEach { status ->
             assertFalse("${status.name} is not a retry target", status.isRetryable)
@@ -95,28 +93,40 @@ class PaymentStatusTest {
     }
 
     @Test
-    fun kPlusCanOnlyBeAskedFromAStateThatMayBeHandedOver() {
-        assertTrue(PaymentStatus.QUEUED.canShare)
+    fun theBankCanOnlyBeAskedFromAStateThatMayBeHandedOver() {
+        assertTrue(PaymentStatus.READY.canShare)
         assertTrue(PaymentStatus.FAILED.canShare)
-        // An already shared image may be sent again, but only after a warning.
-        assertTrue(PaymentStatus.WAITING_USER.canShare)
         assertFalse(PaymentStatus.SHARING.canShare)
-        // Unknown and completed results must be resolved by the user first.
+        // Unknown, awaiting and unusable-QR results must be resolved by the user first.
         assertFalse(PaymentStatus.UNKNOWN.canShare)
+        assertFalse(PaymentStatus.AWAITING_USER_CONFIRMATION.canShare)
+        assertFalse(PaymentStatus.REQUIRES_QR_REPLACEMENT.canShare)
         assertFalse(PaymentStatus.COMPLETED.canShare)
     }
 
     @Test
-    fun onlyAnItemThatCannotHaveReachedKPlusIsSharedWithoutAWarning() {
-        assertTrue(PaymentStatus.QUEUED.canShareWithoutWarning)
-        // A failed hand-off never reached K PLUS, so retrying it is safe.
-        assertTrue(PaymentStatus.FAILED.canShareWithoutWarning)
-        // These may already have been handed to K PLUS: re-sharing must be explicit.
-        assertFalse(PaymentStatus.WAITING_USER.canShareWithoutWarning)
-        assertTrue(PaymentStatus.WAITING_USER.needsReShareWarning)
-        assertFalse(PaymentStatus.UNKNOWN.canShareWithoutWarning)
-        assertFalse(PaymentStatus.SHARING.canShareWithoutWarning)
-        assertFalse(PaymentStatus.COMPLETED.canShareWithoutWarning)
+    fun theQrCanBeReplacedExactlyWhereTheUserReportsAProblem() {
+        assertTrue(PaymentStatus.REQUIRES_QR_REPLACEMENT.canReplaceQr)
+        assertTrue(PaymentStatus.FAILED.canReplaceQr)
+        assertTrue(PaymentStatus.UNKNOWN.canReplaceQr)
+        listOf(
+            PaymentStatus.READY,
+            PaymentStatus.SHARING,
+            PaymentStatus.AWAITING_USER_CONFIRMATION,
+            PaymentStatus.COMPLETED,
+        ).forEach { status ->
+            assertFalse("${status.name} has nothing to replace", status.canReplaceQr)
+        }
+    }
+
+    @Test
+    fun onlyRequiresQrReplacementIsFlaggedForTheQueue() {
+        assertTrue(PaymentStatus.REQUIRES_QR_REPLACEMENT.requiresQrReplacement)
+        PaymentStatus.entries
+            .filter { it != PaymentStatus.REQUIRES_QR_REPLACEMENT }
+            .forEach { status ->
+                assertFalse("${status.name} does not need a new QR", status.requiresQrReplacement)
+            }
     }
 
     @Test

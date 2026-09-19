@@ -4,15 +4,27 @@
     <string name="screen_title">QR Payment Queue</string>
     <string name="screen_subtitle">เลือกธนาคาร จัดคิวภาพ QR ส่งให้ธนาคารที่เลือกทีละรูป</string>
     <string name="screen_description">เลือกธนาคารสำหรับชำระเงินก่อน แล้วเลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
-    <string name="version_chip">v0.4.2 · bank selection + image queue</string>
+    <string name="version_chip">v0.5.0 · payment queue + problem tab</string>
+
+    <!-- tabs -->
+    <string name="tab_home">หน้าแรก</string>
+    <string name="tab_problems">ปัญหา</string>
+    <string name="tab_completed">ชำระแล้ว</string>
 
     <!-- home -->
-    <string name="home_empty_title">ยังไม่มีรายการในคิว</string>
-    <string name="home_empty_body">กดปุ่มด้านบนเพื่อเลือกรูป QR ที่ต้องการทำรายการ รูปจะถูกคัดลอกเข้าแอป และรูปต้นฉบับในคลังภาพจะไม่ถูกแก้ไข</string>
+    <string name="home_attention_title">ต้องจัดการ</string>
+    <string name="home_ready_title">พร้อมชำระ</string>
+    <string name="home_remaining_title">คิวที่เหลือ</string>
+    <string name="home_empty_title">ยังไม่มี QR</string>
+    <string name="home_empty_body">เพิ่มรูป QR เพื่อเริ่มต้น รูปจะถูกคัดลอกเข้าแอป และรูปต้นฉบับในคลังภาพจะไม่ถูกแก้ไข</string>
+    <string name="queue_badge_count">%1$d รายการ</string>
 
-    <string name="action_import">+ เพิ่มรูป QR</string>
-    <string name="action_import_hint">เลือกได้หลายรูปพร้อมกัน (1 รูป, 3 รูป, 10 รูป) ระบบจะนำเข้ารูปทั้งหมดแล้วกลับมาหน้าแรกอัตโนมัติ</string>
+    <string name="action_import">+ เพิ่ม QR</string>
+    <string name="action_import_hint">เลือกได้หลายรูปพร้อมกัน ระบบจะนำเข้ารูปทั้งหมดแล้วกลับมาหน้าแรกอัตโนมัติ</string>
     <string name="action_import_disabled_hint">กรุณาเลือกธนาคารก่อน จึงจะเพิ่มรูป QR ได้</string>
+    <string name="action_clear_queue">ล้างคิว</string>
+    <string name="action_cancel">ยกเลิก</string>
+    <string name="action_dismiss">ปิด</string>
 
     <!-- bank selection -->
     <string name="bank_section_title">ธนาคารสำหรับชำระเงิน</string>
@@ -32,81 +44,77 @@
     <string name="bank_option_not_installed">ไม่ได้ติดตั้ง</string>
     <string name="bank_option_not_advertised">ติดตั้งแล้ว · ไม่พบกิจกรรมที่รับรูป QR</string>
     <string name="bank_option_unknown">ไม่สามารถตรวจสอบได้</string>
-    <string name="share_no_bank_note">กรุณาเลือกธนาคารก่อนส่งรูป</string>
-    <string name="action_import_more">เพิ่มรูป QR</string>
-    <string name="action_clear_queue">ล้างคิว</string>
-    <string name="action_cancel">ยกเลิก</string>
-    <string name="action_dismiss">ปิด</string>
-    <string name="action_back_home">กลับหน้าแรก</string>
 
-    <!-- queue -->
-    <string name="queue_section_title">สรุปคิว</string>
-    <string name="queue_list_title">รูปทั้งหมดในคิว</string>
-    <string name="queue_badge_count">%1$d รูป</string>
-    <string name="stat_total">รายการทั้งหมด</string>
-    <string name="stat_completed">เสร็จแล้ว</string>
-    <string name="stat_remaining">เหลือ</string>
-    <string name="item_completed_note">ทำรายการแล้ว และจะไม่ถูกส่งไปธนาคารอีก</string>
-    <string name="item_sharing_hint">กำลังเปิดธนาคาร…</string>
-    <string name="item_unknown_hint">ต้องตรวจสอบผลในแอปธนาคารก่อน จึงจะทำรายการอื่นได้</string>
+    <!-- item cards -->
+    <string name="item_qr_version">QR เวอร์ชันที่ %1$d</string>
     <string name="image_unavailable">ไม่สามารถแสดงรูปนี้ได้</string>
+    <string name="image_description">รูป QR ของรายการนี้</string>
 
-    <!-- hand-off -->
-    <string name="action_share">แชร์ไปธนาคาร</string>
+    <!-- actions -->
+    <string name="action_pay">ชำระเงิน · %1$s</string>
+    <string name="action_pay_short">ชำระเงิน</string>
     <string name="action_view_image">ดูรูป</string>
+    <string name="action_retry">ลองอีกครั้ง</string>
     <string name="action_confirm_completed">ทำรายการเสร็จแล้ว</string>
-    <string name="action_try_again">ลองอีกครั้ง</string>
-
-    <string name="share_blocked_note">มีรายการที่กำลังรอการยืนยันหรือรอตรวจสอบผลอยู่ ต้องจัดการรายการนั้นให้จบก่อน จึงจะเริ่มรายการถัดไปได้</string>
+    <string name="action_keep_waiting">ยังไม่แน่ใจ</string>
+    <string name="action_mark_qr_unusable">QR ใช้งานไม่ได้</string>
+    <string name="action_replace_qr">เปลี่ยน QR</string>
 
     <!-- user confirmation -->
-    <string name="confirm_question">ทำรายการสำหรับรูปนี้เสร็จแล้วหรือยัง?</string>
-    <string name="confirm_body">กลับมาแล้ว ตรวจสอบใน %1$s ว่ารายการเสร็จสมบูรณ์แล้วหรือยัง การกลับมาที่แอปนี้ไม่ถือว่าจ่ายเงินสำเร็จ</string>
-    <string name="waiting_title">ยังไม่ได้ทำรายการสำหรับรูปนี้</string>
-    <string name="waiting_body">รูปที่ %1$d ยังอยู่ในคิวและยังไม่ถูกปิดรายการ กด แชร์ไป %2$s อีกครั้งเมื่อพร้อม ระบบจะไม่ส่งซ้ำให้เอง</string>
+    <string name="confirm_section_title">ตรวจสอบรายการ</string>
+    <string name="confirm_question">คุณกลับมาจากแอปธนาคารแล้ว</string>
+    <string name="confirm_body">กรุณาตรวจสอบผลการทำรายการใน %1$s ก่อน การกลับมาที่แอปนี้ไม่ถือว่าจ่ายเงินสำเร็จ และแอปจะไม่ปิดรายการให้อัตโนมัติ</string>
 
-    <!-- failed / unknown -->
-    <string name="unknown_title">ไม่ทราบผลการทำรายการ</string>
-    <string name="unknown_body">รูปนี้ถูกส่งไปแอปธนาคารแล้ว แต่แอปถูกปิดระหว่างทำรายการ จึงไม่ทราบว่าเสร็จหรือยัง ให้ตรวจสอบในแอปธนาคารแล้วบันทึกผลตามจริง</string>
-    <string name="unknown_note">ระบบจะไม่ลองซ้ำและไม่ปิดรายการให้อัตโนมัติ เพื่อป้องกันการจ่ายซ้ำ</string>
+    <!-- problems -->
+    <string name="problems_title">รายการที่มีปัญหา</string>
+    <string name="problems_empty_title">ไม่มีรายการที่มีปัญหา</string>
+    <string name="problems_empty_body">ทุกรายการเรียบร้อย หากมีรายการที่ต้องตรวจสอบผลหรือต้องเปลี่ยน QR ระบบจะแสดงที่นี่ พร้อมตัวเลขบนแท็บ</string>
+    <string name="problem_unknown_note">การชำระเงินอาจเกิดขึ้นแล้ว กรุณาตรวจสอบในแอปธนาคารก่อน ระบบจะไม่ส่งซ้ำให้เอง</string>
+    <string name="problem_qr_unusable_note">QR นี้ใช้งานไม่ได้ รายการยังอยู่ในคิว กรุณาเปลี่ยน QR ใหม่</string>
+    <string name="problem_failed_note">แอปนี้ไม่สามารถส่งรูปไปยังธนาคารได้ รายการนี้ยังไม่ถึงธนาคาร</string>
+
+    <!-- completed -->
+    <string name="completed_title">ชำระแล้ว</string>
+    <string name="completed_count">ยืนยันโดยคุณแล้ว %1$d รายการ</string>
+    <string name="completed_empty_title">ยังไม่มีรายการที่ชำระแล้ว</string>
+    <string name="completed_empty_body">รายการจะมาอยู่ที่นี่หลังคุณกด "ทำรายการเสร็จแล้ว" เท่านั้น</string>
+    <string name="completed_by_user">คุณยืนยันว่าชำระแล้ว</string>
 
     <!-- finished -->
-    <string name="finished_title">ทำรายการครบแล้ว</string>
+    <string name="finished_title">วันนี้ชำระครบแล้ว</string>
     <string name="finished_count">%1$d / %2$d รายการเสร็จสิ้น</string>
     <string name="finished_body">ทุกรูปในคิวได้รับการยืนยันจากคุณแล้ว แอปไม่ได้อ่าน QR และไม่ได้ตัดสินผลการชำระเงินแทนคุณ</string>
 
     <!-- import -->
-    <string name="import_progress_title">กำลังนำเข้ารูปภาพ</string>
+    <string name="import_progress_title">กำลังเพิ่ม QR</string>
     <string name="import_progress_text">%1$d / %2$d</string>
     <string name="import_progress_hint">กำลังคัดลอกรูปเข้าแอป ไม่มีการอ่าน QR</string>
-    <string name="import_summary_ok_title">นำเข้ารูปครบแล้ว</string>
-    <string name="import_summary_ok_body">นำเข้าสำเร็จ %1$d จาก %2$d รูป เลือกทำรายการทีละรูปได้เลย</string>
-    <string name="import_summary_partial_title">นำเข้าได้ %1$d จาก %2$d รูป</string>
-    <string name="import_summary_partial_body">มี %1$d รูปที่นำเข้าไม่สำเร็จ และไม่ถูกเพิ่มเข้าคิว</string>
+    <string name="import_summary_ok_title">เพิ่ม QR สำเร็จ</string>
+    <string name="import_summary_none_title">ยังไม่มีรายการที่เพิ่มได้</string>
+    <string name="import_summary_line">✓ เพิ่ม %1$d รายการ</string>
+    <string name="import_summary_duplicates">↷ ข้ามรายการซ้ำ %1$d รายการ</string>
+    <string name="import_summary_failed">⚠️ %1$d รายการไม่สำเร็จ</string>
 
     <!-- dialogs -->
-    <string name="reshare_dialog_title">รูปนี้ถูกส่งไป %1$s แล้ว</string>
-    <string name="reshare_dialog_body">หากคุณยังไม่ได้ทำรายการ สามารถลองอีกครั้งได้ การส่งซ้ำอาจทำให้จ่ายซ้ำอีกรอบถ้ารายการแรกสำเร็จไปแล้ว</string>
-    <string name="reshare_dialog_confirm">ลองส่งอีกครั้ง</string>
     <string name="clear_dialog_title">ล้างคิวนี้?</string>
-    <string name="clear_dialog_body">ระบบจะลบคิวและสำเนารูปที่แอปนำเข้าไว้ รูปต้นฉบับในคลังภาพของคุณจะไม่ถูกแตะต้อง</string>
+    <string name="clear_dialog_body">ระบบจะลบคิวและสำเนารูปที่แอปนำเข้าไว้ รวมถึงประวัติ QR ของแต่ละรายการ รูปต้นฉบับในคลังภาพของคุณจะไม่ถูกแตะต้อง</string>
     <string name="clear_dialog_confirm">ล้างคิว</string>
 
     <!-- notices -->
     <string name="notice_share_target_unavailable">ไม่สามารถเปิดธนาคารที่เลือกได้ กรุณาตรวจสอบว่าแอปธนาคารยังติดตั้งอยู่และรองรับการรับรูป QR</string>
     <string name="notice_bank_unavailable">กรุณาเลือกธนาคารก่อนส่งรูป</string>
     <string name="notice_bank_uninstalled">ธนาคารที่เลือกไว้ไม่พบในเครื่องอีกแล้ว กรุณาเลือกธนาคารใหม่</string>
-    <string name="notice_handoff_in_progress">มีรายการที่กำลังรอการยืนยันหรือรอตรวจสอบผลอยู่ ต้องจัดการรายการนั้นให้จบก่อน</string>
+    <string name="notice_bank_not_share_capable">แอปธนาคารติดตั้งอยู่ แต่ไม่พบกิจกรรมที่รับรูป QR โดยตรง ลองตรวจสอบในแอปธนาคารหรือเลือกธนาคารอื่น</string>
+    <string name="notice_handoff_in_progress">รายการนี้กำลังเปิดแอปธนาคารอยู่ หรือมีรายการอื่นที่ต้องจัดการให้จบก่อน</string>
     <string name="notice_view_target_unavailable">ไม่มีแอปใดเปิดรูปนี้ได้</string>
     <string name="notice_image_missing">ไม่พบไฟล์รูปที่นำเข้าไว้ในเครื่อง จึงส่งรูปนี้ไม่ได้</string>
     <string name="notice_queue_not_saved">บันทึกการเปลี่ยนแปลงลงเครื่องไม่สำเร็จ ตรวจสอบพื้นที่ว่างของคุณ ผลล่าสุดอาจไม่ถูกเก็บไว้</string>
     <string name="notice_queue_cleared">ล้างคิวแล้ว</string>
+    <string name="notice_qr_replacement_failed">เปลี่ยน QR ไม่สำเร็จ QR เดิมของรายการนี้ยังอยู่เหมือนเดิม</string>
 
     <!-- safety -->
-    <string name="processing_safety_caption">แอปนี้ไม่อ่านหรือตรวจสอบ QR ไม่กรอก PIN รหัสผ่าน OTP หรือไบโอเมตริก และไม่ยืนยันการชำระเงินในแอปธนาคารแทนคุณ</string>
-
     <string name="safety_title">คุณเป็นผู้ควบคุมทุกการชำระเงิน</string>
     <string name="safety_body">QR Payment Queue เพียงคัดลอก จัดคิว และส่งต่อรูป QR ไปให้ธนาคารที่คุณเลือกเท่านั้น ไม่ได้อ่านหรือตรวจสอบ QR ไม่กรอก PIN รหัสผ่าน OTP หรือไบโอเมตริก ไม่แตะหน้าจอความปลอดภัยของธนาคาร และไม่ปิดรายการให้เองโดยที่คุณยังไม่ยืนยัน</string>
 
-    <string name="status_pipeline_caption">สถานะในคิว: QUEUED → SHARING → WAITING_USER → COMPLETED (FAILED / UNKNOWN หยุดรอให้คุณตัดสินใจ)</string>
+    <string name="status_pipeline_caption">สถานะในคิว: READY → SHARING → AWAITING_USER_CONFIRMATION → COMPLETED (FAILED / UNKNOWN / REQUIRES_QR_REPLACEMENT รอให้คุณตัดสินใจ)</string>
 </resources>

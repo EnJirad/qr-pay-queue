@@ -1,6 +1,8 @@
 package com.enjirad.qrqueue.domain
 
+import java.nio.charset.StandardCharsets
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -9,7 +11,8 @@ import org.junit.Test
 /**
  * The import step is pure apart from the byte copy, which needs a device. These
  * tests cover the parts that can run without one: URI de-duplication, storage
- * naming, and the fact that N selected images become N queued items in order.
+ * naming, content fingerprints, and the fact that N selected images become N
+ * queued Payment Items in order, each with one current QR version.
  */
 class QueueImportTest {
 
@@ -18,11 +21,12 @@ class QueueImportTest {
         val queue = base ?: PaymentQueue.create("queue-1", now)
         var nextPosition = queue.nextPosition
         val items = QueueImport.dedupeSourceUris(uris).map { uri ->
+            val itemId = QueueImport.newItemId()
             QueueImport.buildItem(
-                id = QueueImport.newItemId(),
+                id = itemId,
                 position = nextPosition++,
                 sourceUri = uri,
-                storedImagePath = "/data/user/0/com.enjirad.qrqueue/files/qrqueue/images/${QueueImport.newItemId()}.png",
+                storedImagePath = "/data/user/0/com.enjirad.qrqueue/files/qrqueue/images/$itemId.png",
                 displayName = uri.substringAfterLast('/'),
                 mimeType = "image/png",
                 nowMillis = now,
@@ -76,12 +80,23 @@ class QueueImportTest {
     }
 
     @Test
-    fun itemIdsAreUnique() {
+    fun itemIdsAndVersionIdsAreUnique() {
         assertNotEquals(QueueImport.newItemId(), QueueImport.newItemId())
+        assertNotEquals(QueueImport.newVersionId(), QueueImport.newVersionId())
     }
 
     @Test
-    fun aCopiedImageBecomesAQueuedItemWithNoQrData() {
+    fun fingerprintsAreDeterministicAndContentSensitive() {
+        val one = "qr-image-one".toByteArray(StandardCharsets.UTF_8)
+        val two = "qr-image-two".toByteArray(StandardCharsets.UTF_8)
+
+        assertEquals(QueueImport.fingerprintOf(one), QueueImport.fingerprintOf(one.copyOf()))
+        assertNotEquals(QueueImport.fingerprintOf(one), QueueImport.fingerprintOf(two))
+        assertEquals(64, QueueImport.fingerprintOf(one).length)
+    }
+
+    @Test
+    fun aCopiedImageBecomesAReadyItemWithOneCurrentVersion() {
         val item = QueueImport.buildItem(
             id = "item-1",
             position = 2,
@@ -90,26 +105,37 @@ class QueueImportTest {
             displayName = "screenshot.png",
             mimeType = "image/png",
             nowMillis = 1_700_000_000_000L,
+            fingerprint = "abc123",
         )
 
         assertEquals("item-1", item.id)
         assertEquals(2, item.position)
-        assertEquals("screenshot.png", item.displayName)
-        assertEquals("image/png", item.mimeType)
-        assertEquals(PaymentStatus.QUEUED, item.status)
+        assertEquals(PaymentStatus.READY, item.status)
         assertEquals(1_700_000_000_000L, item.createdAt)
         assertEquals(1_700_000_000_000L, item.updatedAt)
         assertNull(item.failureDetail)
+        assertNull(item.completedAt)
         assertTrue(item.isActive)
+
+        // One current QR version, v1, pointing at the copied file.
+        assertEquals(1, item.qrVersionCount)
+        assertEquals("item-1", item.versions.single().paymentItemId)
+        assertEquals(QueueImport.FIRST_VERSION_NUMBER, item.versions.single().versionNumber)
+        assertTrue(item.versions.single().isCurrent)
+        assertEquals("screenshot.png", item.currentDisplayName)
+        assertEquals("image/png", item.currentMimeType)
+        assertEquals("abc123", item.currentVersion?.fingerprint)
+        assertEquals("content://media/1", item.currentVersion?.sourceUri)
+        assertEquals("QR #03", item.itemLabel)
     }
 
     @Test
-    fun oneSelectedImageBecomesOneQueuedItem() {
+    fun oneSelectedImageBecomesOneReadyItem() {
         val queue = importAll(listOf("content://media/1"), base = null, now = 1L)
 
         assertEquals(1, queue.itemCount)
         assertEquals(listOf(0), queue.items.map { it.position })
-        assertEquals(PaymentStatus.QUEUED, queue.items.first().status)
+        assertEquals(PaymentStatus.READY, queue.items.first().status)
         assertTrue(queue.canStartHandoff(queue.items.first().id))
     }
 
@@ -125,7 +151,7 @@ class QueueImportTest {
         assertEquals(listOf(0, 1, 2), queue.items.map { it.position })
         assertEquals(
             listOf("1", "2", "3"),
-            queue.items.map { it.sourceUri.substringAfterLast('/') },
+            queue.items.map { item -> item.currentVersion?.sourceUri?.substringAfterLast('/') },
         )
     }
 
@@ -137,10 +163,10 @@ class QueueImportTest {
         assertEquals(10, queue.itemCount)
         assertEquals((0..9).toList(), queue.items.map { it.position })
         assertEquals(10, queue.nextPosition)
-        assertEquals("1", queue.items.first().sourceUri.substringAfterLast('/'))
-        assertTrue(queue.items.all { it.status == PaymentStatus.QUEUED })
+        assertEquals("1", queue.items.first().currentVersion?.sourceUri?.substringAfterLast('/'))
+        assertTrue(queue.items.all { item -> item.status == PaymentStatus.READY })
         // Every imported image is offered to the user, one at a time.
-        assertTrue(queue.items.all { queue.canStartHandoff(it.id) })
+        assertTrue(queue.items.all { item -> queue.canStartHandoff(item.id) })
     }
 
     @Test
@@ -170,5 +196,25 @@ class QueueImportTest {
 
         assertEquals(1, unchanged.itemCount)
         assertEquals(base.items.map { it.id }, unchanged.items.map { it.id })
+    }
+
+    @Test
+    fun theQueueRecognisesAStoredFingerprint() {
+        val item = QueueImport.buildItem(
+            id = "item-1",
+            position = 0,
+            sourceUri = "content://media/1",
+            storedImagePath = "/tmp/item-1.png",
+            displayName = "1.png",
+            mimeType = "image/png",
+            nowMillis = 1L,
+            fingerprint = "hash-one",
+        )
+        val queue = PaymentQueue.create("queue-1", 1L, listOf(item))
+
+        assertTrue(queue.hasFingerprint("hash-one"))
+        assertFalse(queue.hasFingerprint("hash-two"))
+        assertFalse(queue.hasFingerprint(null))
+        assertFalse(queue.hasFingerprint(""))
     }
 }

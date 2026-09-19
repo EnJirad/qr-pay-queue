@@ -11,8 +11,9 @@ import org.junit.Test
 
 /**
  * The import screen must end by itself: once every selected image has been
- * handled (copied or failed) and the queue is saved, the app shows the queue
- * again — with no Continue, Done or Next tap, and never stuck on "5 / 5".
+ * handled (copied, skipped as a duplicate, or failed) and the queue is saved, the
+ * app shows the queue again — with no Continue, Done or Next tap, and never stuck
+ * on "5 / 5".
  */
 class ImportCompletionTest {
 
@@ -85,7 +86,7 @@ class ImportCompletionTest {
         assertTrue(running.importing)
 
         // The last image has been handled and the queue is saved: progress is
-        // cleared, so the queue/home content is shown instead of a progress card.
+        // cleared, so the home content is shown instead of a progress card.
         val finished = QueueUiState(importProgress = null)
         assertFalse(finished.importing)
 
@@ -100,6 +101,8 @@ class ImportCompletionTest {
         assertEquals(3, summary.selected)
         assertTrue(summary.allImported)
         assertFalse(summary.hasFailures)
+        assertFalse(summary.hasDuplicates)
+        assertFalse(summary.needsReport)
     }
 
     @Test
@@ -111,6 +114,7 @@ class ImportCompletionTest {
         assertTrue(summary.hasFailures)
         assertEquals(4, summary.imported)
         assertEquals(1, summary.failed)
+        assertTrue(summary.needsReport)
     }
 
     @Test
@@ -123,9 +127,64 @@ class ImportCompletionTest {
     }
 
     @Test
-    fun theDoublePaymentWarningOnlyAppearsForAChosenItem() {
-        assertFalse(QueueUiState().reShareConfirmationVisible)
-        assertNull(QueueUiState().reShareItemId)
-        assertTrue(QueueUiState(reShareItemId = "item-1").reShareConfirmationVisible)
+    fun skippedDuplicatesAreCountedSeparatelyFromFailures() {
+        val summary = ImportSummary(imported = 3, failed = 0, duplicates = 2)
+
+        assertEquals(5, summary.selected)
+        assertEquals(3, summary.imported)
+        assertTrue(summary.hasDuplicates)
+        assertFalse(summary.hasFailures)
+        // Nothing was lost, but the run still has something to explain.
+        assertFalse(summary.allImported)
+        assertTrue(summary.needsReport)
+    }
+
+    @Test
+    fun aFailedImportLeavesTheSuccessfulItemsAlone() {
+        val summary = ImportSummary(imported = 8, failed = 2)
+
+        assertEquals(10, summary.selected)
+        assertEquals(8, summary.imported)
+        assertEquals(2, summary.failed)
+        assertTrue(summary.needsReport)
+    }
+
+    @Test
+    fun thePaymentActionIsLockedWhileAHandOffIsBeingLaunched() {
+        assertFalse(QueueUiState().paymentInFlight)
+
+        val locked = QueueUiState(
+            imageIntent = ImageIntentRequest(
+                kind = ImageIntentKind.SHARE,
+                itemId = "item-1",
+                filePath = "/tmp/item-1.png",
+                mimeType = "image/png",
+                fileName = "item-1.png",
+                targetPackage = "com.kasikorn.retail.mbanking.wap",
+            ),
+        )
+
+        assertTrue(locked.paymentInFlight)
+    }
+
+    @Test
+    fun viewingAnImageNeverLocksThePaymentAction() {
+        val viewing = QueueUiState(
+            imageIntent = ImageIntentRequest(
+                kind = ImageIntentKind.VIEW,
+                itemId = "item-1",
+                filePath = "/tmp/item-1.png",
+                mimeType = "image/png",
+                fileName = "item-1.png",
+            ),
+        )
+
+        assertFalse(viewing.paymentInFlight)
+    }
+
+    @Test
+    fun noQrReplacementIsPendingUntilTheUserAsksForOne() {
+        assertNull(QueueUiState().replaceQrItem)
+        assertNull(QueueUiState().replaceQrItemId)
     }
 }
