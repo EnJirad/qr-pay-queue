@@ -650,7 +650,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     fun onMarkUnknown(itemId: String) {
         val queue = _uiState.value.queue ?: return
         if (queue.item(itemId)?.status != PaymentStatus.AWAITING_USER_CONFIRMATION) return
-        persist(queue.markUnknown(itemId, System.currentTimeMillis()))
+        persist(queue.markUnknown(itemId, null, System.currentTimeMillis()))
     }
 
     // ---- clear item ---------------------------------------------------------
