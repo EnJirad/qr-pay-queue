@@ -3,6 +3,8 @@ package com.enjirad.qrqueue.data
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.enjirad.qrqueue.domain.BankInfo
+import com.enjirad.qrqueue.domain.BankRegistry
 import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueImport
@@ -149,6 +151,42 @@ class QueueRepository(private val context: Context) {
         stateFile().delete()
     }
 
+    // ---- selected bank ------------------------------------------------------
+
+    /**
+     * Persists the user's chosen bank so it survives every form of process
+     * death. Only the package name and bank id are stored — enough to restore
+     * the selection and re-probe the bank's availability on restart.
+     */
+    fun saveSelectedBank(bank: BankInfo): Boolean = runCatching {
+        prefs().edit()
+            .putString(KEY_BANK_PACKAGE, bank.name)
+            .putString(KEY_BANK_ID, bank.id)
+            .apply()
+    }.isSuccess
+
+    /**
+     * Restores the previously selected bank, or null when nothing was saved
+     * yet (first install). If the stored id is unknown the bank list was
+     * changed upstream; null is returned so the user picks again.
+     */
+    fun loadSelectedBank(): BankInfo? {
+        val prefs = prefs()
+        val packageName = prefs.getString(KEY_BANK_PACKAGE, null) ?: return null
+        val bankId = prefs.getString(KEY_BANK_ID, null)
+        // Try the stable id first, then fall back to a package-name lookup so
+        // an older persisted value still resolves.
+        return (bankId?.let { BankRegistry.findById(it) }
+            ?: BankRegistry.findByPackage(packageName))
+            ?.takeIf { it.name == packageName }
+    }
+
+    fun clearSelectedBank() {
+        prefs().edit().remove(KEY_BANK_PACKAGE).remove(KEY_BANK_ID).apply()
+    }
+
+    private fun prefs() = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
     // ---- paths --------------------------------------------------------------
 
     private fun rootDirectory(): File = File(context.filesDir, ROOT_DIR)
@@ -260,6 +298,9 @@ class QueueRepository(private val context: Context) {
 
         /** Bumped from 1: the item model no longer carries QR data. */
         const val SCHEMA_VERSION = 2
+        const val PREFS_NAME = "qr_queue_bank"
+        const val KEY_BANK_PACKAGE = "selected_bank_package"
+        const val KEY_BANK_ID = "selected_bank_id"
         const val DEFAULT_DISPLAY_NAME = "QR image"
         const val DEFAULT_QUEUE_ID = "queue"
     }

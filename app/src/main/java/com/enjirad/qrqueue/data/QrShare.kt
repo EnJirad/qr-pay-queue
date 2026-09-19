@@ -58,9 +58,6 @@ object QrShare {
     const val ANY_IMAGE_MIME_TYPE = "image/*"
     const val CONTENT_URI_PREFIX = "content://"
 
-    /** K PLUS, the one and only destination of a payment hand-off. */
-    const val K_PLUS_PACKAGE = "com.kasikornbank.kplus"
-
     /**
      * Builds the hand-off description, or null when the image has no usable
      * `content://` URI.
@@ -70,7 +67,11 @@ object QrShare {
      * MIME type falls back to the generic image type, which image-capable
      * receivers advertise.
      */
-    fun shareSpec(contentUri: String?, mimeType: String?): ShareIntentSpec? {
+    fun shareSpec(
+        contentUri: String?,
+        mimeType: String?,
+        targetPackage: String,
+    ): ShareIntentSpec? {
         val uri = contentUri?.trim().orEmpty()
         if (!uri.startsWith(CONTENT_URI_PREFIX)) return null
         val type = mimeType?.trim()
@@ -81,34 +82,40 @@ object QrShare {
             mimeType = type,
             streamUri = uri,
             grantReadUriPermission = true,
-            targetPackage = K_PLUS_PACKAGE,
+            targetPackage = targetPackage,
         )
     }
 
     /**
-     * The direct hand-off to K PLUS.
+     * The direct hand-off to a banking app.
      *
-     * The intent is addressed to K PLUS by package, so Android opens K PLUS
-     * straight away and the user never has to pick an app. If K PLUS cannot
+     * The intent is addressed to the bank by package, so Android opens it
+     * straight away and the user never has to pick an app. If the bank cannot
      * receive it, the launch fails with `ActivityNotFoundException` and the item
-     * is recorded as [com.enjirad.qrqueue.domain.PaymentStatus.FAILED] — the app
-     * does not fall back to a chooser and does not invent a workaround.
+     * is recorded as FAILED — the app does not fall back to a chooser and does
+     * not invent a workaround.
      *
      * @return null when the image has no shareable `content://` URI.
      */
-    fun kPlusShareIntent(context: Context, file: File, mimeType: String): Intent? {
+    fun bankShareIntent(
+        context: Context,
+        file: File,
+        mimeType: String,
+        targetPackage: String,
+    ): Intent? {
         val uri = contentUri(context, file) ?: return null
-        val spec = shareSpec(uri.toString(), mimeType) ?: return null
+        val spec = shareSpec(uri.toString(), mimeType, targetPackage) ?: return null
         return Intent(spec.action).apply {
             type = spec.mimeType
             putExtra(EXTRA_STREAM, uri)
-            // Direct hand-off: only K PLUS is addressed, so no chooser is shown.
+            // Direct hand-off: only the selected bank is addressed, so no chooser
+            // is shown.
             setPackage(spec.targetPackage)
             if (spec.grantReadUriPermission) addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (context !is Activity) {
                 // Needed only when there is no activity task to launch into; from
-                // our own activity K PLUS opens from this task, so returning from
-                // it lands back on the queue.
+                // our own activity the bank app opens from this task, so returning
+                // from it lands back on the queue.
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         }

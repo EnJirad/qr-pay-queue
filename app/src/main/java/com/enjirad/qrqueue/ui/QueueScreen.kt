@@ -19,12 +19,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Warning
@@ -34,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -45,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -55,6 +59,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -62,10 +67,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.enjirad.qrqueue.R
-import com.enjirad.qrqueue.data.KPlusTarget
-import com.enjirad.qrqueue.data.KPlusTargetStatus
+import com.enjirad.qrqueue.data.BankTarget
 import com.enjirad.qrqueue.data.QrImageFiles
 import com.enjirad.qrqueue.data.QrShare
+import com.enjirad.qrqueue.domain.BankAvailability
+import com.enjirad.qrqueue.domain.BankInfo
+import com.enjirad.qrqueue.domain.BankRegistry
+import com.enjirad.qrqueue.domain.BankTargetStatus
 import com.enjirad.qrqueue.domain.ImportProgress
 import com.enjirad.qrqueue.domain.ImportSummary
 import com.enjirad.qrqueue.domain.PaymentQueue
@@ -91,6 +99,9 @@ data class QueueCallbacks(
     val onClearConfirmed: () -> Unit,
     val onClearDismissed: () -> Unit,
     val onNoticeShown: () -> Unit,
+    val onChangeBank: () -> Unit,
+    val onBankSelected: (String) -> Unit,
+    val onBankSelectionDismissed: () -> Unit,
 )
 
 /** Connects the screen to its ViewModel and to Android's photo picker. */
@@ -99,8 +110,6 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(
-        // No fixed item limit: the contract uses the picker limit reported by the
-        // device itself, so a device with a lower limit can never reject the launch.
         contract = ActivityResultContracts.PickMultipleVisualMedia(),
     ) { uris ->
         if (uris.isEmpty()) {
@@ -110,12 +119,12 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
         }
     }
 
-    // The pending request lives in the ViewModel, and this effect body has no
-    // suspension point: it either never runs or runs to completion, so a recreated
-    // composition can never hand the same image to K PLUS twice.
     LaunchedEffect(state.imageIntent) {
         val request = state.imageIntent ?: return@LaunchedEffect
-        viewModel.onImageIntentLaunched(request.kind, launchImageIntent(context, request))
+        viewModel.onImageIntentLaunched(
+            request.kind,
+            launchImageIntent(context, request),
+        )
     }
 
     QueueScreen(
@@ -138,18 +147,25 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
             onClearConfirmed = viewModel::onClearQueueConfirmed,
             onClearDismissed = viewModel::onClearQueueDismissed,
             onNoticeShown = viewModel::onNoticeShown,
+            onChangeBank = viewModel::onChangeBankRequested,
+            onBankSelected = viewModel::onBankSelected,
+            onBankSelectionDismissed = viewModel::onBankSelectionDismissed,
         ),
     )
 }
 
 /**
- * Hands the stored image straight to K PLUS, or opens it in a viewer. Returns
- * false when nothing could be opened, so the item can be recorded as failed.
+ * Hands the stored image straight to the selected bank, or opens it in a viewer.
+ * Returns false when nothing could be opened, so the item can be recorded as
+ * failed.
  */
 private fun launchImageIntent(context: Context, request: ImageIntentRequest): Boolean {
     val file = File(request.filePath)
     val intent = when (request.kind) {
-        ImageIntentKind.SHARE -> QrShare.kPlusShareIntent(context, file, request.mimeType)
+        ImageIntentKind.SHARE -> QrShare.bankShareIntent(
+            context, file, request.mimeType,
+            request.targetPackage ?: return false,
+        )
         ImageIntentKind.VIEW -> QrShare.viewIntent(context, file, request.mimeType)
     } ?: return false
     return try {
@@ -167,7 +183,8 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
     val snackbarHostState = remember { SnackbarHostState() }
     val noticeMessage = when (state.notice) {
         QueueNotice.SHARE_FAILED -> stringResource(R.string.notice_share_failed)
-        QueueNotice.K_PLUS_UNAVAILABLE -> stringResource(R.string.notice_k_plus_unavailable)
+        QueueNotice.BANK_UNAVAILABLE -> stringResource(R.string.notice_bank_unavailable)
+        QueueNotice.BANK_UNINSTALLED -> stringResource(R.string.notice_bank_uninstalled)
         QueueNotice.HANDOFF_IN_PROGRESS -> stringResource(R.string.notice_handoff_in_progress)
         QueueNotice.VIEW_TARGET_UNAVAILABLE -> stringResource(R.string.notice_view_target_unavailable)
         QueueNotice.IMAGE_MISSING -> stringResource(R.string.notice_image_missing)
@@ -197,6 +214,14 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         )
     }
 
+    if (state.bankSelectionVisible) {
+        BankSelectionDialog(
+            currentBank = state.selectedBank,
+            onBankSelected = callbacks.onBankSelected,
+            onDismiss = callbacks.onBankSelectionDismissed,
+        )
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -213,12 +238,22 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
             state.importSummary?.let { summary ->
                 ImportSummaryBanner(summary = summary, onDismiss = callbacks.onImportSummaryShown)
             }
+            // Bank selection card is always visible on the home/queue screen.
+            BankSelectionCard(
+                selectedBank = state.selectedBank,
+                bankStatus = state.bankStatus,
+                onChangeBank = callbacks.onChangeBank,
+            )
             val queue = state.queue
             when {
                 state.importing -> ImportProgressCard(progress = state.importProgress)
-                queue == null -> HomeContent(onImportImages = callbacks.onImportImages)
+                queue == null -> HomeContent(
+                    canImport = state.canImport,
+                    onImportImages = callbacks.onImportImages,
+                )
                 else -> QueueContent(
                     queue = queue,
+                    selectedBank = state.selectedBank,
                     confirmationDismissedFor = state.confirmationDismissedFor,
                     callbacks = callbacks,
                 )
@@ -351,10 +386,204 @@ private fun SafetyCard() {
     }
 }
 
+// ---- bank selection ---------------------------------------------------------
+
+@Composable
+private fun BankSelectionCard(
+    selectedBank: BankInfo?,
+    bankStatus: BankTargetStatus?,
+    onChangeBank: () -> Unit,
+) {
+    val isReady = bankStatus?.canHandOff == true
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            if (selectedBank != null && !isReady) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+            },
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = stringResource(R.string.bank_section_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(10.dp))
+            if (selectedBank == null) {
+                // No bank selected yet — first install or cleared.
+                Text(
+                    text = stringResource(R.string.bank_not_selected),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.bank_not_selected_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (!isReady) {
+                // Bank was selected but is no longer reachable.
+                Text(
+                    text = selectedBank.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = if (bankStatus?.availability == BankAvailability.INSTALLED_NOT_ADVERTISED) {
+                        stringResource(R.string.bank_installed_not_advertised)
+                    } else {
+                        stringResource(R.string.bank_not_found)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            } else {
+                // Bank is selected and reachable.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = selectedBank.displayName,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        if (selectedBank.displayNameDetail.isNotEmpty()) {
+                            Text(
+                                text = selectedBank.displayNameDetail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.bank_ready),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            OutlinedButton(
+                onClick = onChangeBank,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = if (selectedBank == null) {
+                        stringResource(R.string.action_select_bank)
+                    } else {
+                        stringResource(R.string.action_change_bank)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BankSelectionDialog(
+    currentBank: BankInfo?,
+    onBankSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    // Probe every known bank on this device.
+    val bankStatuses = remember {
+        BankRegistry.BANKS.map { bank -> BankTarget.query(context, bank) }
+    }
+    var selectedId by remember { mutableStateOf(currentBank?.id) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.bank_dialog_title)) },
+        text = {
+            Column {
+                bankStatuses.forEach { status ->
+                    val bank = status.bank
+                    val isAvailable = status.canHandOff
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = selectedId == bank.id,
+                                enabled = isAvailable,
+                                onClick = { selectedId = bank.id },
+                                role = Role.RadioButton,
+                            )
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = selectedId == bank.id,
+                            onClick = null,
+                            enabled = isAvailable,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = bank.displayName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (isAvailable) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                },
+                            )
+                            Text(
+                                text = when {
+                                    status.availability == BankAvailability.NOT_INSTALLED ->
+                                        stringResource(R.string.bank_option_not_installed)
+                                    status.availability == BankAvailability.INSTALLED_NOT_ADVERTISED ->
+                                        stringResource(R.string.bank_option_not_advertised)
+                                    else ->
+                                        stringResource(R.string.bank_option_ready)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = when {
+                                    !isAvailable -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    status.availability == BankAvailability.INSTALLED_NOT_ADVERTISED ->
+                                        MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.primary
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { selectedId?.let { onBankSelected(it) } },
+                enabled = selectedId != null,
+            ) {
+                Text(text = stringResource(R.string.bank_dialog_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
 // ---- home -------------------------------------------------------------------
 
 @Composable
-private fun HomeContent(onImportImages: () -> Unit) {
+private fun HomeContent(canImport: Boolean, onImportImages: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -387,7 +616,7 @@ private fun HomeContent(onImportImages: () -> Unit) {
         }
     }
 
-    ImportCard(onImportImages = onImportImages)
+    ImportCard(enabled = canImport, onImportImages = onImportImages)
 
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -422,7 +651,7 @@ private fun HomeContent(onImportImages: () -> Unit) {
 }
 
 @Composable
-private fun ImportCard(onImportImages: () -> Unit) {
+private fun ImportCard(enabled: Boolean, onImportImages: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -432,6 +661,7 @@ private fun ImportCard(onImportImages: () -> Unit) {
         Column(modifier = Modifier.padding(20.dp)) {
             Button(
                 onClick = onImportImages,
+                enabled = enabled,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -450,13 +680,23 @@ private fun ImportCard(onImportImages: () -> Unit) {
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                text = stringResource(R.string.action_import_hint),
+                text = if (enabled) {
+                    stringResource(R.string.action_import_hint)
+                } else {
+                    stringResource(R.string.action_import_disabled_hint)
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                },
             )
         }
     }
 }
+
+// ---- import progress --------------------------------------------------------
 
 @Composable
 private fun ImportProgressCard(progress: ImportProgress?) {
@@ -495,10 +735,6 @@ private fun ImportProgressCard(progress: ImportProgress?) {
     }
 }
 
-/**
- * Reports what the last import actually did. Importing several images can leave
- * some behind, and the app says so instead of only reporting success.
- */
 @Composable
 private fun ImportSummaryBanner(summary: ImportSummary, onDismiss: () -> Unit) {
     val failed = summary.hasFailures
@@ -558,6 +794,7 @@ private fun ImportSummaryBanner(summary: ImportSummary, onDismiss: () -> Unit) {
 @Composable
 private fun QueueContent(
     queue: PaymentQueue,
+    selectedBank: BankInfo?,
     confirmationDismissedFor: String?,
     callbacks: QueueCallbacks,
 ) {
@@ -590,7 +827,7 @@ private fun QueueContent(
 
     val answerItem = queue.awaitingAnswerItem
     if (answerItem != null && confirmationDismissedFor != answerItem.id) {
-        ConfirmPaymentPanel(item = answerItem, callbacks = callbacks)
+        ConfirmPaymentPanel(item = answerItem, selectedBank = selectedBank, callbacks = callbacks)
     }
 
     queue.unknownItem?.let { unknown ->
@@ -604,7 +841,7 @@ private fun QueueContent(
     SectionTitle(text = stringResource(R.string.queue_list_title))
 
     queue.items.forEach { item ->
-        QueueItemCard(item = item, queue = queue, callbacks = callbacks)
+        QueueItemCard(item = item, queue = queue, selectedBank = selectedBank, callbacks = callbacks)
     }
 
     Row(
@@ -626,23 +863,13 @@ private fun QueueContent(
     )
 }
 
-/**
- * One image in the queue, with its own action.
- *
- * The user chooses which image to pay next; the app only refuses to start a
- * second hand-off while another one is already in flight or unresolved.
- */
 @Composable
 private fun QueueItemCard(
     item: QueueItem,
     queue: PaymentQueue,
+    selectedBank: BankInfo?,
     callbacks: QueueCallbacks,
 ) {
-    val context = LocalContext.current
-    // Describes the real K PLUS state on this device; never forces a target.
-    val kPlus = remember(item.id, item.mimeType) {
-        KPlusTarget.query(context, item.mimeType)
-    }
     val canStart = queue.canStartHandoff(item.id)
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -694,8 +921,8 @@ private fun QueueItemCard(
                     ItemHint(text = stringResource(R.string.item_unknown_hint))
                 else -> ShareRow(
                     item = item,
-                    enabled = canStart && kPlus.canHandOff,
-                    kPlus = kPlus,
+                    enabled = canStart && selectedBank != null,
+                    selectedBank = selectedBank,
                     blocked = !canStart,
                     callbacks = callbacks,
                 )
@@ -739,7 +966,7 @@ private fun ItemHint(text: String) {
 private fun ShareRow(
     item: QueueItem,
     enabled: Boolean,
-    kPlus: KPlusTargetStatus,
+    selectedBank: BankInfo?,
     blocked: Boolean,
     callbacks: QueueCallbacks,
 ) {
@@ -774,17 +1001,16 @@ private fun ShareRow(
     }
     when {
         blocked -> ItemHint(text = stringResource(R.string.share_blocked_note))
-        !kPlus.isInstalled -> ItemHint(text = stringResource(R.string.share_kplus_not_installed_note))
-        !kPlus.advertised -> ItemHint(text = stringResource(R.string.share_kplus_not_advertised_note))
+        selectedBank == null -> ItemHint(text = stringResource(R.string.share_no_bank_note))
     }
 }
 
-/**
- * Shown when K PLUS has this image: the user — not the app — decides whether the
- * payment is done. Coming back from K PLUS never completes anything.
- */
 @Composable
-private fun ConfirmPaymentPanel(item: QueueItem, callbacks: QueueCallbacks) {
+private fun ConfirmPaymentPanel(
+    item: QueueItem,
+    selectedBank: BankInfo?,
+    callbacks: QueueCallbacks,
+) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -931,8 +1157,6 @@ private fun UnknownResultPanel(item: QueueItem, callbacks: QueueCallbacks) {
 
 @Composable
 private fun QrImagePreview(path: String?) {
-    // The preview is loaded off the main thread and held in plain state, so the
-    // queue screen never decodes a full-resolution screenshot on the UI thread.
     val imageState = remember(path) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(path) {
         imageState.value = if (path.isNullOrEmpty()) {
@@ -945,7 +1169,6 @@ private fun QrImagePreview(path: String?) {
     }
     Surface(
         shape = RoundedCornerShape(16.dp),
-        // QR images are rendered on white so the code stays scannable in dark mode.
         color = Color.White,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
@@ -1028,10 +1251,6 @@ private fun FinishedBanner(queue: PaymentQueue, onBackHome: () -> Unit) {
 
 // ---- shared pieces ----------------------------------------------------------
 
-/**
- * Shown before handing an already shared image to K PLUS again: repeating a
- * hand-off is how the same bill gets paid twice.
- */
 @Composable
 private fun ReShareDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
@@ -1070,10 +1289,6 @@ private fun ClearQueueDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-/**
- * Small decorative QR glyph drawn in code — no image assets, no dependencies.
- * It is a fixed pattern, used purely as a visual motif.
- */
 @Composable
 private fun QrGlyph(modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
     Canvas(modifier = modifier) {
@@ -1113,7 +1328,6 @@ private fun QueueScreenEmptyPreview() {
     }
 }
 
-/** Preview-only callback set: no behavior, no data. */
 private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onImportImages = {},
     onShareItem = {},
@@ -1128,4 +1342,7 @@ private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onClearConfirmed = {},
     onClearDismissed = {},
     onNoticeShown = {},
+    onChangeBank = {},
+    onBankSelected = {},
+    onBankSelectionDismissed = {},
 )

@@ -2,9 +2,9 @@
     <string name="app_name">QR Payment Queue</string>
 
     <string name="screen_title">QR Payment Queue</string>
-    <string name="screen_subtitle">จัดคิวภาพ QR แล้วส่งให้ K PLUS ทีละรูป</string>
-    <string name="screen_description">เลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
-    <string name="version_chip">v0.4.1 · image queue + direct K PLUS handoff</string>
+    <string name="screen_subtitle">เลือกธนาคาร จัดคิวภาพ QR ส่งให้ธนาคารที่เลือกทีละรูป</string>
+    <string name="screen_description">เลือกธนาคารสำหรับชำระเงินก่อน แล้วเลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
+    <string name="version_chip">v0.4.2 · bank selection + image queue</string>
 
     <!-- home -->
     <string name="home_empty_title">ยังไม่มีรายการในคิว</string>
@@ -12,6 +12,23 @@
 
     <string name="action_import">+ เพิ่มรูป QR</string>
     <string name="action_import_hint">เลือกได้หลายรูปพร้อมกัน (1 รูป, 3 รูป, 10 รูป) ระบบจะนำเข้ารูปทั้งหมดแล้วกลับมาหน้าแรกอัตโนมัติ</string>
+    <string name="action_import_disabled_hint">กรุณาเลือกธนาคารก่อน จึงจะเพิ่มรูป QR ได้</string>
+
+    <!-- bank selection -->
+    <string name="bank_section_title">ธนาคารสำหรับชำระเงิน</string>
+    <string name="bank_not_selected">ยังไม่ได้เลือกธนาคาร</string>
+    <string name="bank_not_selected_hint">กรุณาเลือกธนาคารก่อนเพิ่มรูป QR</string>
+    <string name="bank_ready">พร้อมใช้งาน</string>
+    <string name="bank_not_found">ไม่พบแอปธนาคารในเครื่อง</string>
+    <string name="bank_installed_not_advertised">ติดตั้งอยู่ในเครื่อง แต่ไม่รองรับการส่งรูป QR โดยตรง</string>
+    <string name="action_select_bank">เลือกธนาคาร</string>
+    <string name="action_change_bank">เปลี่ยนธนาคาร</string>
+    <string name="bank_dialog_title">เลือกธนาคารสำหรับชำระเงิน</string>
+    <string name="bank_dialog_confirm">ยืนยัน</string>
+    <string name="bank_option_ready">พร้อมใช้งาน</string>
+    <string name="bank_option_not_installed">ไม่ได้ติดตั้ง</string>
+    <string name="bank_option_not_advertised">ไม่รองรับการส่งรูป</string>
+    <string name="share_no_bank_note">กรุณาเลือกธนาคารก่อนส่งรูป</string>
     <string name="action_import_more">เพิ่มรูป QR</string>
     <string name="action_clear_queue">ล้างคิว</string>
     <string name="action_cancel">ยกเลิก</string>
@@ -25,20 +42,18 @@
     <string name="stat_total">รายการทั้งหมด</string>
     <string name="stat_completed">เสร็จแล้ว</string>
     <string name="stat_remaining">เหลือ</string>
-    <string name="item_completed_note">ทำรายการแล้ว และจะไม่ถูกส่งไป K PLUS อีก</string>
-    <string name="item_sharing_hint">กำลังเปิด K PLUS…</string>
-    <string name="item_unknown_hint">ต้องตรวจสอบผลใน K PLUS ก่อน จึงจะทำรายการอื่นได้</string>
+    <string name="item_completed_note">ทำรายการแล้ว และจะไม่ถูกส่งไปธนาคารอีก</string>
+    <string name="item_sharing_hint">กำลังเปิดธนาคาร…</string>
+    <string name="item_unknown_hint">ต้องตรวจสอบผลในแอปธนาคารก่อน จึงจะทำรายการอื่นได้</string>
     <string name="image_unavailable">ไม่สามารถแสดงรูปนี้ได้</string>
 
     <!-- hand-off -->
-    <string name="action_share">แชร์ไป K PLUS</string>
+    <string name="action_share">แชร์ไปธนาคาร</string>
     <string name="action_view_image">ดูรูป</string>
     <string name="action_confirm_completed">ทำรายการเสร็จแล้ว</string>
     <string name="action_try_again">ลองอีกครั้ง</string>
 
     <string name="share_blocked_note">มีรายการที่กำลังรอการยืนยันหรือรอตรวจสอบผลอยู่ ต้องจัดการรายการนั้นให้จบก่อน จึงจะเริ่มรายการถัดไปได้</string>
-    <string name="share_kplus_not_installed_note">ไม่พบแอป K PLUS บนเครื่องนี้ จึงยังส่งรูปไปให้ K PLUS ไม่ได้</string>
-    <string name="share_kplus_not_advertised_note">K PLUS ไม่ได้ประกาศรับรูปภาพไว้ ระบบจะลองส่งให้อยู่ แต่ถ้าไม่สำเร็จจะแจ้งว่า K PLUS ไม่รับรูปนี้</string>
 
     <!-- user confirmation -->
     <string name="confirm_question">ทำรายการสำหรับรูปนี้เสร็จแล้วหรือยัง?</string>
@@ -48,7 +63,7 @@
 
     <!-- failed / unknown -->
     <string name="unknown_title">ไม่ทราบผลการทำรายการ</string>
-    <string name="unknown_body">รูปนี้ถูกส่งไป K PLUS แล้ว แต่แอปถูกปิดระหว่างทำรายการ จึงไม่ทราบว่าเสร็จหรือยัง ให้ตรวจสอบใน K PLUS แล้วบันทึกผลตามจริง</string>
+    <string name="unknown_body">รูปนี้ถูกส่งไปแอปธนาคารแล้ว แต่แอปถูกปิดระหว่างทำรายการ จึงไม่ทราบว่าเสร็จหรือยัง ให้ตรวจสอบในแอปธนาคารแล้วบันทึกผลตามจริง</string>
     <string name="unknown_note">ระบบจะไม่ลองซ้ำและไม่ปิดรายการให้อัตโนมัติ เพื่อป้องกันการจ่ายซ้ำ</string>
 
     <!-- finished -->
@@ -74,8 +89,9 @@
     <string name="clear_dialog_confirm">ล้างคิว</string>
 
     <!-- notices -->
-    <string name="notice_share_failed">K PLUS ไม่รับรูปที่ส่งไป (ไม่พบกิจกรรมที่รองรับ) จึงยังไม่ได้เริ่มรายการนี้ ลองใหม่อีกครั้งได้</string>
-    <string name="notice_k_plus_unavailable">ไม่พบแอป K PLUS บนเครื่องนี้ จึงยังส่งรูปไปให้ K PLUS ไม่ได้</string>
+    <string name="notice_share_failed">ธนาคารไม่รับรูปที่ส่งไป (ไม่พบกิจกรรมที่รองรับ) จึงยังไม่ได้เริ่มรายการนี้ ลองใหม่อีกครั้งได้</string>
+    <string name="notice_bank_unavailable">กรุณาเลือกธนาคารก่อนส่งรูป</string>
+    <string name="notice_bank_uninstalled">ธนาคารที่เลือกไว้ไม่พบในเครื่องอีกแล้ว กรุณาเลือกธนาคารใหม่</string>
     <string name="notice_handoff_in_progress">มีรายการที่กำลังรอการยืนยันหรือรอตรวจสอบผลอยู่ ต้องจัดการรายการนั้นให้จบก่อน</string>
     <string name="notice_view_target_unavailable">ไม่มีแอปใดเปิดรูปนี้ได้</string>
     <string name="notice_image_missing">ไม่พบไฟล์รูปที่นำเข้าไว้ในเครื่อง จึงส่งรูปนี้ไม่ได้</string>
@@ -86,7 +102,7 @@
     <string name="processing_safety_caption">แอปนี้ไม่อ่านหรือตรวจสอบ QR ไม่กรอก PIN รหัสผ่าน OTP หรือไบโอเมตริก และไม่ยืนยันการชำระเงินในแอปธนาคารแทนคุณ</string>
 
     <string name="safety_title">คุณเป็นผู้ควบคุมทุกการชำระเงิน</string>
-    <string name="safety_body">QR Payment Queue เพียงคัดลอก จัดคิว และส่งต่อรูป QR ไปให้ K PLUS เท่านั้น ไม่ได้อ่านหรือตรวจสอบ QR ไม่กรอก PIN รหัสผ่าน OTP หรือไบโอเมตริก ไม่แตะหน้าจอความปลอดภัยของธนาคาร และไม่ปิดรายการให้เองโดยที่คุณยังไม่ยืนยัน</string>
+    <string name="safety_body">QR Payment Queue เพียงคัดลอก จัดคิว และส่งต่อรูป QR ไปให้ธนาคารที่คุณเลือกเท่านั้น ไม่ได้อ่านหรือตรวจสอบ QR ไม่กรอก PIN รหัสผ่าน OTP หรือไบโอเมตริก ไม่แตะหน้าจอความปลอดภัยของธนาคาร และไม่ปิดรายการให้เองโดยที่คุณยังไม่ยืนยัน</string>
 
     <string name="status_pipeline_caption">สถานะในคิว: QUEUED → SHARING → WAITING_USER → COMPLETED (FAILED / UNKNOWN หยุดรอให้คุณตัดสินใจ)</string>
 </resources>

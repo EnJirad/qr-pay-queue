@@ -11,17 +11,21 @@
     -->
 
     <!--
-      Package visibility (Android 11+): the app must be able to ask whether
-      K PLUS can receive the image it is about to hand over. Without this the
-      platform hides other apps and the check would report "not found" on a
-      device that has K PLUS. This grants no permissions and exposes no data.
+      Package visibility (Android 11+): the app must be able to ask whether a
+      banking app can receive the image it is about to hand over. Without this
+      the platform hides other apps and the check would report "not found" even
+      when the bank is installed. This grants no permissions and exposes no data.
     -->
     <queries>
         <intent>
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="image/*" />
         </intent>
+        <!-- Known Thai banking apps the app can hand QR images to. -->
         <package android:name="com.kasikornbank.kplus" />
+        <package android:name="com.scb.BankApp" />
+        <package android:name="com.krungthai.nextbanking" />
+        <package android:name="com.bblmobilebanking" />
     </queries>
 
     <application
@@ -43,7 +47,7 @@
         </activity>
 
         <!--
-          Shares only the app-private queue image copies with K PLUS.
+          Shares only the app-private queue image copies with the selected bank.
           Exported=false plus grantUriPermissions means no other app can read
           them without an explicit, per-use grant.
         -->
