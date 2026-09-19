@@ -1,4 +1,4 @@
-# Real-device test report — V0.5.0 tabs, state machine, replace QR
+# Real-device test report — V0.6.0 tabs, one-handed mode, problem reasons, daily reset
 
 ## Status
 
@@ -8,6 +8,12 @@
 > change was written. CI only compiles, unit-tests, lints and packages the APK, so
 > **no screen of this app has ever been rendered outside a build**, and no bank
 > hand-off has been observed. Nothing in this repository claims otherwise.
+>
+> The last **green** CI run was the V0.5.0 build (`ec84fdd`, run `35451443398`).
+> The V0.6 commits are **red**: run `35455677419` (`ba3005f`) failed three unit
+> tests. The fixes for them are in the working tree and have not been built yet,
+> so there is no APK for V0.6 to test at the time of writing. Do not test against
+> a stale 0.5.0 artifact and record the result as a V0.6 pass.
 
 ## Required checklist (Xiaomi 15T Pro / Android 16) — 20 steps
 
@@ -36,13 +42,28 @@ None of these has been run.
 | 19 | Verify UNKNOWN recovery | Kill the app mid hand-off → item returns as ยังไม่ทราบผล, queue pauses, **nothing is re-sent** | NOT RUN |
 | 20 | Rapid payment taps | Hammering **ชำระเงิน** starts exactly one attempt and opens the bank once | NOT RUN |
 
+### V0.6 additions (one-handed mode, problem reasons, clear item, daily reset)
+
+| # | Step | Expected | Status |
+| --- | --- | --- | --- |
+| 21 | Open **ตั้งค่า** | Hand mode shows ถนัดขวา selected; auto-reset shows its current state; bank section shows the selected bank; manual reset is offered | NOT RUN |
+| 22 | Switch to **ถนัดซ้าย** | The primary actions of the current item (ชำระเงิน, ดูรูป / มีปัญหา and the confirmation buttons) move to the **left** side of the card; nothing is stretched across the screen | NOT RUN |
+| 23 | Switch back to **ถนัดขวา** | The same actions sit on the **right** side; no second layout appears | NOT RUN |
+| 24 | Restart after choosing ถนัดซ้าย | The setting is still ถนัดซ้าย and the actions are still on the left | NOT RUN |
+| 25 | Tap **มีปัญหา** on the current QR | A short reason list appears (QR ใช้งานไม่ได้ / ธนาคารแจ้งว่า QR ไม่ถูกต้อง / QR หมดอายุ / จ่ายไม่ได้ / รูปภาพมีปัญหา / อื่น ๆ) | NOT RUN |
+| 26 | Pick a reason | The item leaves หน้าแรก, appears in ปัญหา with that reason, the badge increases, and the item keeps its number | NOT RUN |
+| 27 | Restart after reporting a problem | The same item is still in ปัญหา with the same reason, and its reported QR is **not** listed as the current one | NOT RUN |
+| 28 | **ล้างรายการ** on a problem item | A confirmation dialog appears; confirming deletes only that item and its images; the other items keep their numbers and statuses | NOT RUN |
+| 29 | Turn on auto-reset, then move the device date forward one day and reopen the app | The previous day's queue and images are gone, a notice says so, and both the selected bank and ถนัดมือ are unchanged | NOT RUN |
+| 30 | Manual **ล้างข้อมูลของวันนี้** | After confirming, the queue is empty; settings and the bank selection survive; gallery images are untouched | NOT RUN |
+
 ## Verified so far (no device required)
 
 | Claim | Evidence |
 | --- | --- |
-| APK builds | GitHub Actions run `35451443398` (commit `ec84fdd`): `assembleDebug` PASS, APK 9.3M |
-| Unit tests pass | same run: `testDebugUnitTest` PASS (163 test methods) |
-| Lint passes | same run: `lintDebug` PASS (`abortOnError = true`) |
+| APK builds | **V0.5.0 only.** GitHub Actions run `35451443398` (commit `ec84fdd`): `assembleDebug` PASS, APK 9.3M. The V0.6 tree has **not** been built: run `35455677419` failed at `testDebugUnitTest`, so no APK was produced |
+| Unit tests pass | **V0.5.0 only** (163 test methods, same run). The V0.6 tree is at 190 test methods and the three failures of run `35455677419` have been fixed in the working tree, **unverified by CI so far** |
+| Lint passes | **V0.5.0 only** (same run, `abortOnError = true`). The V0.6 lint step has never run |
 | State machine (all valid/invalid transitions) | `PaymentQueueTest` (25 methods) |
 | Only user confirmation completes an item | `PaymentConfirmationTest` (10 methods) |
 | Double-payment protection | `DoublePaymentTest` (8 methods): one attempt per tap burst, one hand-off at a time |
@@ -63,9 +84,9 @@ None of these has been run.
 | Device model | Xiaomi 15T Pro (target) |
 | Android version | Android 16 (target) |
 | Bank app versions | _to be filled in_ |
-| App version | 0.5.0 (versionCode 7) |
+| App version | 0.6.0 (versionCode 8) |
 | Build under test | commit hash of the tested build |
-| APK source | GitHub Actions artifact `qr-payment-queue-v0.5.0-debug` |
+| APK source | GitHub Actions artifact `qr-payment-queue-v0.6.0-debug` |
 | Test date | _to be filled in_ |
 | Tester | _to be filled in_ |
 
@@ -178,6 +199,39 @@ Status: `NOT RUN`
 
 Import 3 images → pay each one → confirm each one → all 3 appear under ชำระแล้ว →
 หน้าแรก shows "วันนี้ชำระครบแล้ว 3/3".
+Status: `NOT RUN`
+
+### TEST 17 — hand mode moves the actions (V0.6)
+
+ตั้งค่า → ถนัดซ้าย → หน้าแรก.
+Expected: the current item's primary actions are anchored to the left; switching back
+to ถนัดขวา mirrors them to the right. Same layout, no clipping on a narrow screen,
+and the buttons keep their full touch height.
+Status: `NOT RUN`
+
+### TEST 18 — problem reason (V0.6)
+
+On the current QR tap **มีปัญหา** and pick "QR หมดอายุ".
+Expected: the item moves to ปัญหา with that reason visible, keeps its number and
+position, and its previous QR is no longer the current one. After a restart the
+reason is still shown and the reported QR is still not current. Selecting
+**เปลี่ยน QR** gives the same item a v2 and returns it to หน้าแรก.
+Status: `NOT RUN`
+
+### TEST 19 — clear one item (V0.6)
+
+In ปัญหา, **ล้างรายการ** → confirm.
+Expected: only that item and its images are deleted; the remaining items keep their
+numbers, statuses and QR versions; no gallery image is touched.
+Status: `NOT RUN`
+
+### TEST 20 — daily reset (V0.6)
+
+Turn the automatic reset on, leave the queue with items, then move the device date
+forward one day and open the app.
+Expected: the queue and its copied images are deleted, a notice says the daily data
+was cleared, and the settings (hand mode, auto-reset, bank) are untouched. The
+manual **ล้างข้อมูลของวันนี้** does the same on demand, after a confirmation.
 Status: `NOT RUN`
 
 ## Evidence to attach

@@ -332,7 +332,11 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
             AppHeader(onSettingsRequested = callbacks.onSettingsRequested)
             when (state.selectedTab) {
                 QueueTab.HOME -> HomeTab(state = state, callbacks = callbacks)
-                QueueTab.PROBLEMS -> ProblemsTab(queue = state.queue, callbacks = callbacks)
+                QueueTab.PROBLEMS -> ProblemsTab(
+                    queue = state.queue,
+                    handPreference = state.handPreference,
+                    callbacks = callbacks,
+                )
                 QueueTab.COMPLETED -> CompletedTab(queue = state.queue)
             }
             SafetyCard()
@@ -760,7 +764,11 @@ private fun ColumnScope.HomeTab(state: QueueUiState, callbacks: QueueCallbacks) 
 
     if (problem != null) {
         SectionTitle(text = stringResource(R.string.home_attention_title))
-        ProblemItemCard(item = problem, callbacks = callbacks)
+        ProblemItemCard(
+            item = problem,
+            handPreference = state.handPreference,
+            callbacks = callbacks,
+        )
     }
 
     if (awaiting != null) {
@@ -768,11 +776,17 @@ private fun ColumnScope.HomeTab(state: QueueUiState, callbacks: QueueCallbacks) 
         ConfirmPaymentPanel(
             item = awaiting,
             selectedBank = state.selectedBank,
+            handPreference = state.handPreference,
             callbacks = callbacks,
         )
     } else if (awaiting == null && problem == null && ready != null) {
         SectionTitle(text = stringResource(R.string.home_ready_title))
-        ReadyItemCard(item = ready, selectedBank = state.selectedBank, callbacks = callbacks)
+        ReadyItemCard(
+            item = ready,
+            selectedBank = state.selectedBank,
+            handPreference = state.handPreference,
+            callbacks = callbacks,
+        )
     }
 
     if (awaiting == null && problem == null && ready == null && queue.finished) {
@@ -916,7 +930,11 @@ private fun ImportCard(canImport: Boolean, onImportImages: () -> Unit) {
 // ---- tab 2: problems --------------------------------------------------------
 
 @Composable
-private fun ColumnScope.ProblemsTab(queue: PaymentQueue?, callbacks: QueueCallbacks) {
+private fun ColumnScope.ProblemsTab(
+    queue: PaymentQueue?,
+    handPreference: HandPreference,
+    callbacks: QueueCallbacks,
+) {
     val problems = queue?.problemItems.orEmpty()
     SectionTitle(
         text = stringResource(R.string.problems_title),
@@ -932,7 +950,7 @@ private fun ColumnScope.ProblemsTab(queue: PaymentQueue?, callbacks: QueueCallba
     }
 
     problems.forEach { item ->
-        ProblemItemCard(item = item, callbacks = callbacks)
+        ProblemItemCard(item = item, handPreference = handPreference, callbacks = callbacks)
     }
 }
 
@@ -986,7 +1004,11 @@ private fun EmptyStateCard(title: String, body: String) {
 
 /** The card Home uses for the item that needs attention right now. */
 @Composable
-private fun ProblemItemCard(item: QueueItem, callbacks: QueueCallbacks) {
+private fun ProblemItemCard(
+    item: QueueItem,
+    handPreference: HandPreference,
+    callbacks: QueueCallbacks,
+) {
     val status = item.status
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -1017,17 +1039,34 @@ private fun ProblemItemCard(item: QueueItem, callbacks: QueueCallbacks) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
-            ProblemActions(item = item, callbacks = callbacks)
+            ProblemActions(item = item, handPreference = handPreference, callbacks = callbacks)
         }
     }
 }
 
 /**
- * The actions a problem item offers. Every one of them is an explicit user
- * decision: nothing is retried, completed or re-shared by the app itself.
+ * The recovery actions of the current item, placed in the one-handed action area
+ * (V0.6 §4–§6) so "what do I do about this?" sits under the same thumb as the pay
+ * action.
  */
 @Composable
-private fun ProblemActions(item: QueueItem, callbacks: QueueCallbacks) {
+private fun ProblemActions(
+    item: QueueItem,
+    handPreference: HandPreference,
+    callbacks: QueueCallbacks,
+) {
+    OneHandActionBar(handPreference = handPreference) {
+        ProblemActionButtons(item = item, callbacks = callbacks)
+    }
+}
+
+/**
+ * The buttons themselves, full width inside the action band. Every one of them is
+ * an explicit user decision: nothing is retried, completed or re-shared by the app
+ * itself.
+ */
+@Composable
+private fun ProblemActionButtons(item: QueueItem, callbacks: QueueCallbacks) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (item.status) {
             PaymentStatus.UNKNOWN -> {
@@ -1134,7 +1173,12 @@ private fun ProblemActions(item: QueueItem, callbacks: QueueCallbacks) {
 
 /** The card Home uses for the next QR that is ready to pay. */
 @Composable
-private fun ReadyItemCard(item: QueueItem, selectedBank: BankInfo?, callbacks: QueueCallbacks) {
+private fun ReadyItemCard(
+    item: QueueItem,
+    selectedBank: BankInfo?,
+    handPreference: HandPreference,
+    callbacks: QueueCallbacks,
+) {
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -1144,47 +1188,85 @@ private fun ReadyItemCard(item: QueueItem, selectedBank: BankInfo?, callbacks: Q
         Column(modifier = Modifier.padding(16.dp)) {
             ItemHeader(item = item)
             Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = { callbacks.onShareItem(item.id) },
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Share,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(
-                        R.string.action_pay,
-                        selectedBank?.displayName ?: stringResource(R.string.bank_generic),
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                TextButton(onClick = { callbacks.onViewItem(item.id) }) {
+            OneHandActionBar(handPreference = handPreference) {
+                Button(
+                    onClick = { callbacks.onShareItem(item.id) },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = stringResource(R.string.action_view_image),
-                        style = MaterialTheme.typography.bodySmall,
+                        text = stringResource(
+                            R.string.action_pay,
+                            selectedBank?.displayName ?: stringResource(R.string.bank_generic),
+                        ),
+                        style = MaterialTheme.typography.labelLarge,
                     )
                 }
-                TextButton(onClick = { callbacks.onReportProblem(item.id) }) {
-                    Text(
-                        text = stringResource(R.string.action_report_problem),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TextButton(onClick = { callbacks.onViewItem(item.id) }) {
+                        Text(
+                            text = stringResource(R.string.action_view_image),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    TextButton(onClick = { callbacks.onReportProblem(item.id) }) {
+                        Text(
+                            text = stringResource(R.string.action_report_problem),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * How much of the card width a [OneHandActionBar] band occupies. It is a fraction
+ * rather than a fixed size so the primary action stays inside the thumb zone on a
+ * narrow phone and never overflows it.
+ */
+private const val oneHandActionBand = 0.85f
+
+/**
+ * The one-handed action area (V0.6 §4–§6): the primary actions sit together in a
+ * band on the thumb side — bottom-right when the user chose ถนัดขวา, mirrored for
+ * ถนัดซ้าย — instead of being stretched across the whole card where a thumb has to
+ * reach for them.
+ *
+ * There is exactly one layout: the hand preference only decides which side the
+ * band is anchored to, so no second UI tree has to be kept in sync. The actions
+ * themselves are laid out by [content] exactly as before, full width inside the
+ * band, which keeps their touch targets large.
+ */
+@Composable
+private fun OneHandActionBar(
+    handPreference: HandPreference,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val leftHanded = handPreference == HandPreference.LEFT
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (leftHanded) Arrangement.Start else Arrangement.End,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(oneHandActionBand),
+            horizontalAlignment = if (leftHanded) Alignment.Start else Alignment.End,
+            content = content,
+        )
     }
 }
 
@@ -1403,6 +1485,7 @@ private fun ImportSummaryBanner(summary: ImportSummary, onDismiss: () -> Unit) {
 private fun ConfirmPaymentPanel(
     item: QueueItem,
     selectedBank: BankInfo?,
+    handPreference: HandPreference,
     callbacks: QueueCallbacks,
 ) {
     Surface(
@@ -1439,49 +1522,51 @@ private fun ConfirmPaymentPanel(
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
             Spacer(Modifier.height(14.dp))
-            Button(
-                onClick = { callbacks.onConfirmCompleted(item.id) },
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.action_confirm_completed),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { callbacks.onMarkQrUnusable(item.id) },
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.action_mark_qr_unusable),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { callbacks.onKeepWaiting(item.id) },
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.action_keep_waiting),
-                    style = MaterialTheme.typography.labelLarge,
-                )
+            OneHandActionBar(handPreference = handPreference) {
+                Button(
+                    onClick = { callbacks.onConfirmCompleted(item.id) },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.action_confirm_completed),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { callbacks.onMarkQrUnusable(item.id) },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.action_mark_qr_unusable),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { callbacks.onKeepWaiting(item.id) },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.action_keep_waiting),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
             }
         }
     }

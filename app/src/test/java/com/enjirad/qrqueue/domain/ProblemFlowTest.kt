@@ -1,6 +1,7 @@
 package com.enjirad.qrqueue.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -43,20 +44,36 @@ class ProblemFlowTest {
 
         val updated = q.reportProblem(item.id, "หมดอายุ", 2000L)
         val changed = updated.item(item.id)!!
-        val newCurrent = changed.currentVersion!!
 
-        assertEquals(oldCurrent.id, newCurrent.id)
-        assertEquals(QrVersionStatus.UNUSABLE, newCurrent.status)
+        // A QR the user reported unusable stops being the item's current QR, so
+        // it can never be handed to the bank again — but it stays as history and
+        // is still previewable (the same rule as markQrUnusable in V0.5).
+        assertNull(changed.currentVersion)
+        assertEquals(QrVersionStatus.UNUSABLE, changed.latestVersion?.status)
+        assertEquals(oldCurrent.filePath, changed.previewFilePath)
+        assertFalse(updated.canStartHandoff(item.id))
+        // The item is kept, and the other item is untouched.
+        assertEquals(2, updated.itemCount)
+        assertEquals(PaymentStatus.READY, updated.item("item-2")?.status)
     }
 
     @Test
     fun `reportProblem is no-op for already completed item`() {
         val q = queueWithItems(1)
-        val completed = q.confirmCompleted(q.items[0].id, 1000L)
-        val result = completed.reportProblem(completed.items[0].id, "test", 2000L)
+        val itemId = q.items[0].id
+        // An item reaches COMPLETED only through the user's own confirmation,
+        // and only after it was handed to the bank.
+        val completed = q
+            .startSharing(itemId, 900L)
+            .shareLaunched(itemId, 950L)
+            .confirmCompleted(itemId, 1000L)
+        assertEquals(PaymentStatus.COMPLETED, completed.item(itemId)?.status)
 
-        assertEquals(PaymentStatus.COMPLETED, result.items[0].status)
-        assertNull(result.items[0].problemReason)
+        val result = completed.reportProblem(itemId, "test", 2000L)
+
+        // Nothing at all changes for a completed item: no status, no reason, no
+        // version and no attempt.
+        assertEquals(completed.item(itemId), result.item(itemId))
     }
 
     @Test

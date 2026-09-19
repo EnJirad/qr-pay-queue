@@ -96,22 +96,34 @@ data class QueueItem(
     val isCompletedAt: Long? get() = completedAt
 
     /**
-     * Guarantees that exactly one version is current: the newest CURRENT version
-     * wins, and if none is marked the highest version number becomes current.
-     * Old versions never become current again.
+     * Guarantees that at most one version is current.
+     *
+     * The newest CURRENT version wins. Only a version list that carries no CURRENT
+     * flag at all — a repaired or hand-edited queue file — is re-pointed at its
+     * newest version, and never while the user has already reported a QR of this
+     * item unusable: that verdict is a fact, not a missing flag.
+     *
+     * So an item the user reported ("QR ใช้งานไม่ได้", "QR หมดอายุ") comes back
+     * from disk waiting for a replacement QR with no current version at all —
+     * exactly as it was left, and still impossible to hand to the bank.
      */
     fun withNormalizedVersions(): QueueItem {
         if (versions.isEmpty()) return this
         val ordered = versions.sortedBy { version -> version.versionNumber }
         val currentIndex = ordered.indexOfLast { version -> version.isCurrent }
-        val keeper = if (currentIndex >= 0) currentIndex else ordered.lastIndex
+        val reportedUnusable = ordered.any { version ->
+            version.status == QrVersionStatus.UNUSABLE
+        }
+        val keeper = when {
+            currentIndex >= 0 -> currentIndex
+            reportedUnusable -> NO_CURRENT_VERSION
+            else -> ordered.lastIndex
+        }
         val normalized = ordered.mapIndexed { index, version ->
-            if (index == keeper) {
-                version.copy(status = QrVersionStatus.CURRENT)
-            } else if (version.isCurrent) {
-                version.copy(status = QrVersionStatus.SUPERSEDED)
-            } else {
-                version
+            when {
+                index == keeper -> version.copy(status = QrVersionStatus.CURRENT)
+                version.isCurrent -> version.copy(status = QrVersionStatus.SUPERSEDED)
+                else -> version
             }
         }
         return if (normalized == versions) this else copy(versions = normalized)
@@ -120,5 +132,8 @@ data class QueueItem(
     private companion object {
         const val DEFAULT_MIME_TYPE = "image/*"
         const val DEFAULT_DISPLAY_NAME = "QR image"
+
+        /** No version is current: the item waits for a new QR. */
+        const val NO_CURRENT_VERSION = -1
     }
 }

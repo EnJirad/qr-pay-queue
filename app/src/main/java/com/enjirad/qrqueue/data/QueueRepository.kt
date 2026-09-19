@@ -265,6 +265,9 @@ class QueueRepository(
         putNullable("completedAt", item.completedAt)
         putNullable("lastAttemptAt", item.lastAttemptAt)
         putNullable("failureDetail", item.failureDetail)
+        // V0.6: the reason the user picked when reporting a problem, so the
+        // Problem tab can still explain the item after a restart.
+        putNullable("problemReason", item.problemReason)
         put(
             "versions",
             JSONArray().apply { item.versions.forEach { put(serializeVersion(it)) } },
@@ -314,12 +317,13 @@ class QueueRepository(
     /**
      * Reads one Payment Item.
      *
-     * Schema 3 stores QR versions and attempts explicitly. Older queues stored a
-     * single image per item (`storedImagePath`, `displayName`, `mimeType`) and
-     * the 0.3.x schema used `fileName` / `importedAtMillis`; those are still
-     * accepted and become the item's v1 QR version, so an existing queue opens
-     * unchanged. Removed QR-only fields (payload, amount, recipient, issue) are
-     * simply no longer read.
+     * Schema 3 stores QR versions and attempts explicitly, plus the V0.6
+     * `problemReason` (absent in older files, which simply read as null). Older
+     * queues stored a single image per item (`storedImagePath`, `displayName`,
+     * `mimeType`) and the 0.3.x schema used `fileName` / `importedAtMillis`;
+     * those are still accepted and become the item's v1 QR version, so an
+     * existing queue opens unchanged. Removed QR-only fields (payload, amount,
+     * recipient, issue) are simply no longer read.
      */
     private fun parseItem(json: JSONObject, fallbackPosition: Int): QueueItem? {
         val id = json.stringOrNull("id") ?: return null
@@ -373,6 +377,7 @@ class QueueRepository(
             completedAt = json.longOrNull("completedAt"),
             lastAttemptAt = json.longOrNull("lastAttemptAt"),
             failureDetail = json.stringOrNull("failureDetail"),
+            problemReason = json.stringOrNull("problemReason"),
             versions = versions,
             attempts = attempts,
         ).withNormalizedVersions()

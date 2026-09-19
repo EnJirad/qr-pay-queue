@@ -42,6 +42,51 @@ class QrReplacementTest {
     }
 
     @Test
+    fun aReportedUnusableQrStaysUnusableWhenTheQueueIsReloaded() {
+        val reported = testQueue(testItem("a", 0))
+            .startSharing("a", 10L)
+            .shareLaunched("a", 20L)
+            .markQrUnusable("a", "bank rejected it", 30L)
+
+        // Every load from disk goes through normalized(); it must not quietly
+        // turn the QR the user reported unusable back into the current one.
+        val reloaded = reported.normalized().item("a")!!
+
+        assertNull(reloaded.currentVersion)
+        assertEquals(QrVersionStatus.UNUSABLE, reloaded.latestVersion?.status)
+        assertEquals(PaymentStatus.REQUIRES_QR_REPLACEMENT, reloaded.status)
+        assertEquals(0, reloaded.versions.count { version -> version.isCurrent })
+        assertEquals("bank rejected it", reloaded.failureDetail)
+        assertFalse(testQueue(reloaded).canStartHandoff("a"))
+        assertNull(reloaded.currentFilePath)
+        // The image is still there to look at while the user picks a new QR.
+        assertEquals("a-v1.png", reloaded.previewFilePath?.substringAfterLast('/'))
+    }
+
+    @Test
+    fun aSupersededQrIsNotRevivedWhenTheCurrentQrIsReportedUnusable() {
+        val queue = testQueue(testItem("a", 0))
+            .failItem("a", "boom", 10L)
+            .replaceCurrentQr("a", testVersion("a-v2", "a", versionNumber = 2), 20L)
+            .startSharing("a", 30L)
+            .shareLaunched("a", 40L)
+            .markQrUnusable("a", "rejected", 50L)
+            .normalized()
+        val item = queue.item("a")!!
+
+        // The item is left with no current QR: the new one was reported unusable
+        // and the old one was already replaced, so reviving v1 would put a QR the
+        // user had already moved past back in front of the bank.
+        assertEquals(
+            listOf(QrVersionStatus.SUPERSEDED, QrVersionStatus.UNUSABLE),
+            item.versions.map { version -> version.status },
+        )
+        assertNull(item.currentVersion)
+        assertEquals(0, item.versions.count { version -> version.isCurrent })
+        assertEquals(PaymentStatus.REQUIRES_QR_REPLACEMENT, item.status)
+    }
+
+    @Test
     fun anUnresolvedItemCanAlsoBeReportedAsAnUnusableQr() {
         val fromUnknown = testQueue(testItem("a", 0))
             .startSharing("a").shareLaunched("a").markUnknown("a")

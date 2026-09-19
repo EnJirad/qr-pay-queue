@@ -52,6 +52,8 @@ QR Payment Queue walks you through a batch of QR payment screenshots — one
    **เปลี่ยน QR** action: picking a new image replaces the QR of the *same*
    Payment Item, which returns to `READY`. The old QR stays in history.
 9. Items you confirmed move to **ชำระแล้ว**. Pick the next item and repeat.
+10. **ตั้งค่า** holds ถนัดมือ (the primary actions sit in the thumb zone of the hand
+    you chose), the automatic daily reset and a manual **ล้างข้อมูลของวันนี้**.
 
 ## Platform and technology
 
@@ -63,12 +65,12 @@ QR Payment Queue walks you through a batch of QR payment screenshots — one
 | Architecture | Single activity, AndroidX, ViewModel + StateFlow, domain/UI separation |
 | Build | Gradle (Kotlin DSL), Android Gradle Plugin 8.7.3 |
 | Package | `com.enjirad.qrqueue` |
-| App version | 0.5.0 (versionCode 7) |
+| App version | 0.6.0 (versionCode 8) |
 | QR decoding | **None.** No QR library is used or depended on. |
-| Persistence | App-private JSON queue + SharedPreferences for bank selection + copied images |
+| Persistence | App-private JSON queue + SharedPreferences for the bank selection and settings + copied images |
 | CI | GitHub Actions (`testDebugUnitTest`, `lintDebug`, `assembleDebug`, APK artifact) |
 
-## The V0.5 workflow
+## The V0.6 workflow
 
 ```
 SELECT BANK  (persisted — survives every restart)
@@ -180,6 +182,38 @@ counted, and a count of zero shows no badge at all.
 When every item is confirmed, the home tab shows **วันนี้ชำระครบแล้ว** with the
 count and a **+ เพิ่ม QR** action.
 
+### 8. One-handed mode
+
+**ตั้งค่า → ถนัดมือ** switches between **ถนัดขวา** (default) and **ถนัดซ้าย**. The
+primary actions of the current item — **ชำระเงิน**, **ดูรูป / มีปัญหา** and the
+confirmation buttons — sit together in a band anchored to the thumb side of the
+card: bottom-right for a right-handed user, mirrored for a left-handed one. There
+is one layout and one setting, the actions keep a full-size touch target, and the
+choice is remembered across restarts.
+
+### 9. Report a problem with a reason
+
+**มีปัญหา** on the current QR opens a short list of reasons (QR ใช้งานไม่ได้,
+ธนาคารแจ้งว่า QR ไม่ถูกต้อง, QR หมดอายุ, จ่ายไม่ได้, รูปภาพมีปัญหา, อื่น ๆ). The
+reason is stored with the item and shown in **ปัญหา**. The item keeps its number,
+its QR becomes unusable and stays as history, and the item waits for a new QR.
+
+### 10. Clear one item
+
+An item in **ปัญหา** offers **ล้างรายการ**: after a confirmation dialog that single
+item and its QR images are deleted from the app. Nothing in your gallery is
+changed.
+
+### 11. Settings and daily reset
+
+**ตั้งค่า** (top-right) holds ถนัดมือ, the automatic daily-reset toggle, a manual
+**ล้างข้อมูลของวันนี้** and **เปลี่ยนธนาคาร**. With the automatic reset on, the app
+deletes the previous day's queue — and the images it copied for it — the first time
+it is opened on a new day. Settings and the selected bank are never touched by it.
+The manual action does the same immediately, after a confirmation. The queue is
+never reset while the app is running and nothing is deleted unless the date really
+changed.
+
 ## Queue states
 
 | State | Meaning |
@@ -284,9 +318,8 @@ qr-queue-app/
 │       ├── main/
 │       │   ├── AndroidManifest.xml
 │       │   ├── java/com/enjirad/qrqueue/
-│       │   │   ├── MainActivity.kt
-│       │   │   ├── data/          QueueRepository, QrImageFiles, QrShare, BankTarget
-│       │   │   ├── domain/        QueueItem, QrVersion, PaymentStatus, PaymentQueue, QueueImport, BankInfo
+│       │   │   ├── MainActivity.kt│   │   │   ├── data/          QueueRepository, QrImageFiles, QrShare, BankTarget, AppSettingsStore, BankSelectionStore
+│   │   │   ├── domain/        QueueItem, QrVersion, PaymentStatus, PaymentQueue, QueueImport, BankInfo, HandPreference
 │       │   │   └── ui/            QueueRoute, QueueScreen, QueueViewModel, theme
 │       │   └── res/               strings, colors, themes, launcher icon, file_paths
 │       └── test/java/             pure JVM unit tests
@@ -312,18 +345,29 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`
 ## CI and APK artifact
 
 GitHub Actions runs on every push: unit tests, lint, assembleDebug, APK
-verification, then upload as **`qr-payment-queue-v0.5.0-debug`**. A failing
+verification, then upload as **`qr-payment-queue-v0.6.0-debug`**. A failing
 test, lint run or build fails the workflow.
 
 ## Verification status
 
-- Build, unit tests, lint and the APK are verified in CI on every push (163
-  test methods, including the state machine, badge, QR replacement, duplicate
-  skipping, double-payment protection, direct-share contract, persistence,
-  upload gate and fallback tests).
-- The three tabs and every bank selection, upload gate and share flow are
-  **NOT YET VERIFIED ON A REAL DEVICE** — no Compose screen has been rendered
-  outside CI compilation. The test plan is in
+- The last **green** CI run was `35451443398` (commit `ec84fdd`, V0.5.0): 163 test
+  methods, `lintDebug` and `assembleDebug` pass, APK 9.3M.
+- The three V0.6 commits are **red** in CI. Run `35455677419` (commit `ba3005f`)
+  failed `testDebugUnitTest` with three failures:
+  `PaymentQueueTest.homeOffersUnresolvedResultsBeforeAnythingElse`,
+  `ProblemFlowTest.reportProblem marks current QR as UNUSABLE` and
+  `ProblemFlowTest.reportProblem is no-op for already completed item`.
+- The source fixes for those three (plus two real defects behind them) are in the
+  working tree and **have not been built yet — their CI result has not been
+  observed**, so no build, APK or CI pass is claimed for them.
+- The test suite is now 190 test methods across 18 classes (state machine, badge,
+  QR replacement and QR-version history, duplicate skipping, double-payment
+  protection, direct-share contract, persistence, upload gate, fallback, settings
+  and daily reset).
+- The whole UI — the three tabs, the badge, the one-handed action band, the
+  settings dialog, the problem-reasons sheet, the replace-QR picker and the
+  confirm panel — is **NOT YET VERIFIED ON A REAL DEVICE**: no Compose screen has
+  been rendered outside CI compilation. The test plan is in
   [`docs/REAL_DEVICE_TEST.md`](docs/REAL_DEVICE_TEST.md).
 
 ## Known limitations
@@ -350,6 +394,7 @@ test, lint run or build fails the workflow.
 | V0.4 (0.4.0) | Image queue + K PLUS hand-off | superseded |
 | V0.4.1 (0.4.1) | Home-screen queue, direct K PLUS, no chooser | superseded |
 | V0.4.2 (0.4.2) | Bank selection, persistent bank, upload gate, generalized share | delivered |
-| **V0.5.0 (0.5.0)** | **Three tabs, item state machine, problem badge, replace QR, explicit confirmation** | **delivered** |
+| V0.5.0 (0.5.0) | Three tabs, item state machine, problem badge, replace QR, explicit confirmation | delivered |
+| **V0.6.0 (0.6.0)** | **One-handed thumb zone, settings, problem reasons, clear item, daily reset** | **in review — last CI run red, fix not yet built** |
 | V1.0 | Optional verified reconciliation with official bank API | planned |
-| — | Real-device verification of the tabs and the share flow | not yet done |
+| — | Real-device verification of the tabs, the one-handed layout and the share flow | not yet done |

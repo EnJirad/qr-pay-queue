@@ -93,15 +93,17 @@ data class PaymentQueue(
 
     /**
      * The item Home should offer next, following the product's priority order:
-     * QR that must be replaced, unresolved result, reported failure, then the
+     * unresolved result, QR that must be replaced, reported failure, then the
      * next READY item — each within the original queue order.
      *
-     * Items that are [PaymentStatus.isProblem] are excluded: problem items live
-     * in the Problem tab only, per the V0.6 one-handed redesign.
+     * Problem items are offered on purpose. The one-handed Home screen must say
+     * what to do next without the user hunting for it (V0.5 §5/§6), and it
+     * renders the problem card from this same item; the ปัญหา tab lists every
+     * problem for the cases where the user goes looking instead.
      */
     val nextActionItem: QueueItem?
         get() = items
-            .filter { item -> !item.status.isProblem && priorityRank(item.status) < IN_FLIGHT_RANK }
+            .filter { item -> priorityRank(item.status) < IN_FLIGHT_RANK }
             .minWithOrNull(compareBy({ item -> priorityRank(item.status) }, { item -> item.position }))
 
     /** True when no QR image with this content hash is already in the queue. */
