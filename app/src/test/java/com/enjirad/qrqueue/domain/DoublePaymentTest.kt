@@ -103,7 +103,15 @@ class DoublePaymentTest {
         val retried = failed.startSharing("a", 20L)
 
         assertEquals(PaymentStatus.SHARING, retried.item("a")?.status)
-        assertEquals(2, retried.item("a")?.attempts?.size)
+        // The failed attempt stays in the history and the retry adds its own.
+        assertEquals(
+            listOf(
+                PaymentAttemptResult.STARTED,
+                PaymentAttemptResult.FAILED,
+                PaymentAttemptResult.STARTED,
+            ),
+            retried.item("a")?.attempts?.map { attempt -> attempt.result },
+        )
     }
 
     @Test
