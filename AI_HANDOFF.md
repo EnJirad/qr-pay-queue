@@ -22,13 +22,14 @@ thumb zone, settings dialog, lazy daily reset.
 
 ## CI status right now (read this first)
 
-The three V0.6 commits are **RED**:
+**GREEN as of `6f4a032` (V0.6.0, run `35466912022`, observed 2026-09-19).**
 
 | Commit | Run | Result |
 | --- | --- | --- |
 | `8a87a16` feat: one-handed UX, settings, problem reasons, daily reset | `35455075539` | RED (compile errors) |
 | `a65948d` fix: OptIn for the experimental Material3 bottom sheet | `35455290188` | RED (test compile errors) |
 | `ba3005f` fix: InMemoryAppSettingsStore import path | `35455677419` | RED — **3 unit test failures** |
+| `6f4a032` fix: keep reported QRs unusable, restore Home priority, honour hand mode | `35466912022` | **GREEN** — `testDebugUnitTest`, `lintDebug`, `assembleDebug`, APK 9.3M |
 
 Run `35455677419` failed on:
 
@@ -36,9 +37,9 @@ Run `35455677419` failed on:
 - `ProblemFlowTest.reportProblem marks current QR as UNUSABLE` (NullPointerException)
 - `ProblemFlowTest.reportProblem is no-op for already completed item` (AssertionError)
 
-**The change described below (which fixes all three plus two real defects) is in
-the working tree and has NOT been pushed, so its CI result has NOT been observed.
-Do not report it as green.**
+All three were fixed at their cause by `6f4a032` (below) and CI has confirmed it.
+That run proves **compile + unit test + lint + APK packaging only** — no screen of
+this app has still ever been rendered, so nothing here is a device pass.
 
 ## This change: finish V0.6 (one-handed UX, settings, problem reasons, daily reset)
 
@@ -224,23 +225,24 @@ Pure JVM JUnit 4, no device, no emulator, no new dependency, no `@Ignore`.
   `./gradlew testDebugUnitTest` cannot be run here. The three failing tests were
   diagnosed from the CI log (failure type and line number) and from reading the
   code, not from a local run.
-- GITHUB ACTIONS: **RED on `ba3005f`** (see the top of this file). CI is the build
-  authority; this change's run does not exist yet.
+- GITHUB ACTIONS: **GREEN** on `6f4a032` (run `35466912022`) — `testDebugUnitTest`,
+  `lintDebug`, `assembleDebug` and the APK checks all passed.
 
 ## CI result
 
-- Last green run: `35451443398` (commit `ec84fdd`, V0.5.0, 163 tests, APK 9.3M).
-- Last observed run: `35455677419` (commit `ba3005f`) — **FAILED** in
-  `testDebugUnitTest` with the three failures listed above. `assembleDebug`,
-  `lintDebug` and the APK steps never ran in that workflow because the test step
-  failed first.
-- This change: **NOT YET RUN — do not claim a pass.**
+- Last green run: `35466912022` (commit `6f4a032`, V0.6.0, APK 9.3M) —
+  `BUILD SUCCESSFUL` for unit tests, lint, the APK build and the APK checks.
+- Previous green run: `35451443398` (commit `ec84fdd`, V0.5.0, APK 9.3M).
+- `35455677419` (commit `ba3005f`) — **FAILED** in `testDebugUnitTest` with the
+  three failures listed above. `assembleDebug`, `lintDebug` and the APK steps
+  never ran in that workflow because the test step failed first.
 
 ## APK artifact
 
 - Workflow artifact name: `qr-payment-queue-v0.6.0-debug`
 - Path: `app/build/outputs/apk/debug/app-debug.apk`
-- Last observed size: `9.3M` (run `35451443398`, V0.5.0 — not this build).
+- Last observed size: `9.3M` (run `35466912022`, the V0.6.0 build).
+- This is the artifact a device test should install. It has never been installed.
 
 ## Real-device verification
 
@@ -290,14 +292,13 @@ stay absent; a test asserts it.
 
 ## Next recommended work
 
-1. **Push this change and read the CI result** — it fixes three unit test
-   failures and has never been built.
-2. Run the device checklist (now including the hand-mode, problem-reason, clear-item
-   and daily-reset steps) and fill in `docs/REAL_DEVICE_TEST.md`.
-3. Add Compose UI tests (androidTest + emulator) for the tabs, badge, one-handed
+1. Run the device checklist (now including the hand-mode, problem-reason, clear-item
+   and daily-reset steps) and fill in `docs/REAL_DEVICE_TEST.md`. Everything above
+   is compile- and unit-verified only.
+2. Add Compose UI tests (androidTest + emulator) for the tabs, badge, one-handed
    band, replace-QR flow and confirm panel.
-4. Persist the selected tab (e.g. via `SavedStateHandle`).
-5. Re-verify the remaining Thai banks on Google Play and add the ones that pass.
+3. Persist the selected tab (e.g. via `SavedStateHandle`).
+4. Re-verify the remaining Thai banks on Google Play and add the ones that pass.
 
 ## Commits so far (V0.5 → V0.6)
 
@@ -307,6 +308,7 @@ stay absent; a test asserts it.
 - `8a87a16` — feat: one-handed UX, settings, problem reasons, daily reset (V0.6) — **CI red**
 - `a65948d` — fix: add OptIn for experimental Material3 ModalBottomSheet API — **CI red**
 - `ba3005f` — fix: correct InMemoryAppSettingsStore import path in DailyResetTest — **CI red**
+- `6f4a032` — fix: keep reported QRs unusable, restore Home priority and honour hand mode — **CI green** (`35466912022`)
 
 ## Things future agents must NOT repeat
 

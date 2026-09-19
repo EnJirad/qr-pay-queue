@@ -9,11 +9,11 @@
 > **no screen of this app has ever been rendered outside a build**, and no bank
 > hand-off has been observed. Nothing in this repository claims otherwise.
 >
-> The last **green** CI run was the V0.5.0 build (`ec84fdd`, run `35451443398`).
-> The V0.6 commits are **red**: run `35455677419` (`ba3005f`) failed three unit
-> tests. The fixes for them are in the working tree and have not been built yet,
-> so there is no APK for V0.6 to test at the time of writing. Do not test against
-> a stale 0.5.0 artifact and record the result as a V0.6 pass.
+> The last **green** CI run is the V0.6.0 build (`6f4a032`, run `35466912022`),
+> whose artifact is `qr-payment-queue-v0.6.0-debug` (APK 9.3M) — that is the one
+> to install for this checklist. Earlier V0.6 commits were red: run `35455677419`
+> (`ba3005f`) failed three unit tests, fixed at their cause by `6f4a032`.
+> Do not test against a stale 0.5.0 artifact and record the result as a V0.6 pass.
 
 ## Required checklist (Xiaomi 15T Pro / Android 16) — 20 steps
 

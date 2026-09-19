@@ -350,16 +350,17 @@ test, lint run or build fails the workflow.
 
 ## Verification status
 
-- The last **green** CI run was `35451443398` (commit `ec84fdd`, V0.5.0): 163 test
-  methods, `lintDebug` and `assembleDebug` pass, APK 9.3M.
-- The three V0.6 commits are **red** in CI. Run `35455677419` (commit `ba3005f`)
-  failed `testDebugUnitTest` with three failures:
+- The last **green** CI run is `35466912022` (commit `6f4a032`, V0.6.0): unit
+  tests, `lintDebug` and `assembleDebug` pass, APK 9.3M.
+- Earlier V0.6 commits were red. Run `35455677419` (commit `ba3005f`) failed
+  `testDebugUnitTest` with three failures:
   `PaymentQueueTest.homeOffersUnresolvedResultsBeforeAnythingElse`,
   `ProblemFlowTest.reportProblem marks current QR as UNUSABLE` and
-  `ProblemFlowTest.reportProblem is no-op for already completed item`.
-- The source fixes for those three (plus two real defects behind them) are in the
-  working tree and **have not been built yet — their CI result has not been
-  observed**, so no build, APK or CI pass is claimed for them.
+  `ProblemFlowTest.reportProblem is no-op for already completed item`. `6f4a032`
+  fixes all three at their cause (plus two real defects behind them) and CI
+  confirms it.
+- Green CI means compile, unit test, lint and APK packaging only: no screen of
+  this app has ever been rendered, so it is not a device pass.
 - The test suite is now 190 test methods across 18 classes (state machine, badge,
   QR replacement and QR-version history, duplicate skipping, double-payment
   protection, direct-share contract, persistence, upload gate, fallback, settings
@@ -395,6 +396,6 @@ test, lint run or build fails the workflow.
 | V0.4.1 (0.4.1) | Home-screen queue, direct K PLUS, no chooser | superseded |
 | V0.4.2 (0.4.2) | Bank selection, persistent bank, upload gate, generalized share | delivered |
 | V0.5.0 (0.5.0) | Three tabs, item state machine, problem badge, replace QR, explicit confirmation | delivered |
-| **V0.6.0 (0.6.0)** | **One-handed thumb zone, settings, problem reasons, clear item, daily reset** | **in review — last CI run red, fix not yet built** |
+| **V0.6.0 (0.6.0)** | **One-handed thumb zone, settings, problem reasons, clear item, daily reset** | **delivered — CI green, device test pending** |
 | V1.0 | Optional verified reconciliation with official bank API | planned |
 | — | Real-device verification of the tabs, the one-handed layout and the share flow | not yet done |
