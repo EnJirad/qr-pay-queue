@@ -11,9 +11,9 @@ import java.io.File
  * A pure description of one image hand-off.
  *
  * Keeping the action / MIME / grant rules out of the Android layer means the
- * exact contract the app relies on (standard `ACTION_SEND`, `content://` URI,
- * `image/*`, temporary read grant) is covered by fast JVM unit tests, while
- * [QrShare] only turns the spec into a real [Intent].
+ * exact contract the app relies on (standard `ACTION_SEND`, a `content://` URI,
+ * an image MIME type, a temporary read grant) is covered by fast JVM unit tests,
+ * while [QrShare] only turns the spec into a real [Intent].
  */
 data class ShareIntentSpec(
     val action: String,
@@ -53,7 +53,7 @@ object QrShare {
      *
      * Only a real `content://` URI (from `FileProvider`) is accepted: a
      * `file://` URI would be rejected by the receiving banking app. A missing or
-     * non-image MIME type falls back to `image/*`, which is the broadest type
+     * non-image MIME type falls back to the generic image wildcard type, which
      * every image-capable share target advertises.
      */
     fun shareSpec(contentUri: String?, mimeType: String?): ShareIntentSpec? {
