@@ -144,24 +144,28 @@ Pure JVM JUnit 4 (no device, no emulator, no `@Ignore`, no new dependency):
 ## Build result
 
 - LOCAL BUILD: **not performed / not possible** — this environment has no
-  JDK/SDK (`java` is not installed). Nothing below claims a local pass.
-- GITHUB ACTIONS: the workflow runs on every push; the result of the push that
-  carries this session's changes is the authority. Read the run before reporting
-  a pass.
+  JDK/SDK (`java` is not installed).
+- GITHUB ACTIONS: **SUCCESS** — CI is the build authority for this project and
+  it produced and verified the APK.
 
 ## CI result
 
-- Previous observed run (before this session): **SUCCESS** on commit `4713f68`
-  (`35443754450`, 2m3s) — `testDebugUnitTest`, `lintDebug`, `assembleDebug`,
-  APK verification and artifact upload `qr-payment-queue-v0.4.2-debug`, all PASS.
-- This session's commit: **result not yet observed here.** Do not report CI as
-  green until the corresponding run is read.
+**GREEN** on commit `b838681` (run `35448758349`, 2m0s):
+
+- `testDebugUnitTest`: **PASS** (includes the 4 new test classes)
+- `lintDebug`: **PASS** (`abortOnError = true`)
+- `assembleDebug`: **PASS**
+- APK existence / non-empty / inspect: **PASS**
+- Artifact upload `qr-payment-queue-v0.4.2-debug`: **PASS**
+- Run URL: https://github.com/EnJirad/qr-pay-queue/actions/runs/35448758349
+
+Earlier observed run `35443754450` (commit `4713f68`) was green as well.
 
 ## APK artifact
 
 - Workflow artifact name: `qr-payment-queue-v0.4.2-debug`
 - Path: `app/build/outputs/apk/debug/app-debug.apk`
-- Last observed size (run `35443754450`): `9.2M`.
+- Last observed size (run `35448758349`): `9.2M`.
 
 ## Real-device verification
 
