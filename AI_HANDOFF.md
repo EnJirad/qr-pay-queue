@@ -143,7 +143,8 @@ Tests:
 
 ## Tests
 
-Pure JVM unit tests (no device, no emulator, no new dependency):
+48 JUnit 4 test methods across 5 classes (no device, no emulator, no new
+dependency, no `@Ignore`):
 
 - `PaymentStatusTest` — only `COMPLETED` counts as completed; `SHARING` /
   `WAITING_USER` are never a payment; error states; which states may be shared
@@ -169,24 +170,42 @@ Real device tests: **NOT RUN.** See below.
 
 - LOCAL BUILD: **not performed / not possible** — this sandbox has no JDK, no
   Android SDK, no emulator and no device. The build authority is GitHub Actions.
-- GITHUB ACTIONS: triggered by this push (see "CI result" below).
+- GITHUB ACTIONS: **SUCCESS** on commit `b0d5c8b` (run `35438989074`, 2m35s).
 
 ## CI result
 
-Pending — the workflow run for the V0.4 commit has not been observed yet at the
-time this file was written. Fill this in from the actual run:
+**GREEN.** Every step of `Android CI` succeeded on commit
+`b0d5c8bf72b865cd23063b22d1d7a236004066b6`:
 
-- Run URL: _to be filled in_
-- `testDebugUnitTest`: _to be filled in_
-- `lintDebug`: _to be filled in_
-- `assembleDebug`: _to be filled in_
+- Run URL: https://github.com/EnJirad/qr-pay-queue/actions/runs/35438989074
+- `testDebugUnitTest`: **PASS** (48 tests, 0 failures)
+- `lintDebug`: **PASS** (`abortOnError = true`; 0 errors, warnings only)
+- `assembleDebug`: **PASS**
+- APK existence / non-empty / inspect: **PASS**
+- Artifact upload `qr-payment-queue-v0.4.0-debug`: **PASS**
+- Build time: 2m35s
+
+### Earlier V0.4 runs (kept so the failures are not repeated)
+
+1. `35438463394` — **failed** `:app:compileDebugKotlin`. Kotlin nests block
+   comments, and the literal `image/*` inside two KDoc blocks in `QrShare.kt`
+   opened a nested comment that never closed. Fixed by rephrasing the comments.
+2. `35438681659` — **failed** one unit test: `aBlockedItemStopsTheQueueInsteadOfBeingSkipped`
+   asserted the pre-resolution `unknownCount`. The production behaviour was
+   correct; the assertion was wrong (resolving an UNKNOWN item makes it
+   `COMPLETED`). Fixed in the test.
+3. `35438830461` — **failed** `:app:lintDebug` with one error that had previously
+   been hidden by `abortOnError = false`: `ProduceStateDoesNotAssignValue` in the
+   image preview loader. Fixed by loading the preview into
+   `remember`/`mutableStateOf` from a `LaunchedEffect`.
 
 ## APK artifact
 
-- Workflow artifact name: `qr-payment-queue-v0.4.0-debug`
-- Expected path inside the workflow: `app/build/outputs/apk/debug/app-debug.apk`
-- Last observed build of the previous version (0.3.0) produced a ~9.5 MB APK; the
-  V0.4 APK size is not yet observed.
+- Workflow artifact name: `qr-payment-queue-v0.4.0-debug` (uploaded, `if-no-files-found: error`)
+- Path inside the workflow: `app/build/outputs/apk/debug/app-debug.apk`
+- Last observed V0.4 build (run `35438989074`): APK exists and is non-zero —
+  `9.2M`, containing `classes.dex` (18,137,284 bytes) and `AndroidManifest.xml`
+  (6,512 bytes). For comparison, 0.3.0 produced a 9.5 MB APK.
 
 ## Real-device verification
 

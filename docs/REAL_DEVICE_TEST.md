@@ -19,9 +19,11 @@ is what the **banking app** shows, not what this app shows.
 
 | Claim | Evidence |
 | --- | --- |
-| APK builds | GitHub Actions `assembleDebug` BUILD SUCCESSFUL |
-| APK exists and is non-empty | CI `test -f` / `test -s`, `ls -lh`, `unzip -l` |
-| APK artifact published | artifact `qr-payment-queue-v0.4.0-debug` |
+| APK builds | GitHub Actions run `35438989074` (commit `b0d5c8b`): `assembleDebug` PASS |
+| Unit tests pass | same run: `testDebugUnitTest` PASS, 48 tests |
+| Lint passes | same run: `lintDebug` PASS (`abortOnError = true`) |
+| APK exists and is non-empty | CI `test -f` / `test -s`, `ls -lh` (9.2M), `unzip -l` |
+| APK artifact published | artifact `qr-payment-queue-v0.4.0-debug` in run `35438989074` |
 | No QR decoding exists | no QR library in `gradle/libs.versions.toml`; no decoder source in `app/src/main` |
 | Queue state machine rules | `PaymentQueueTest`, `PaymentStatusTest` |
 | Import order and 1/3/10 images | `QueueImportTest` |
