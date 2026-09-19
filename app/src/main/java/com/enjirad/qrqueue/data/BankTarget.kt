@@ -49,8 +49,9 @@ object BankTarget {
      * Resolves the real state of one banking app on this device.
      *
      * The probe uses the exact intent shape the app builds for the hand-off:
-     * `ACTION_SEND`, `image/*`, addressed to the bank's package. This is as
-     * close as we can get to the real share without actually launching it.
+     * `ACTION_SEND`, the generic image MIME type, addressed to the bank's
+     * package. This is as close as we can get to the real share without actually
+     * launching it.
      */
     fun query(context: Context, bank: BankInfo): BankTargetStatus {
         val installed = isInstalled(context, bank.name)
