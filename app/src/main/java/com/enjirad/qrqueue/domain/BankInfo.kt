@@ -36,7 +36,8 @@ enum class QrShareSupport {
  * questions and are never collapsed into one (Android 11+ package visibility and
  * per-build share activities make the difference real):
  *
- * - [SHARE_CAPABLE] — installed and an activity advertises the `image/*` share.
+ * - [SHARE_CAPABLE] — installed and an activity advertises the generic image
+ *   share.
  * - [INSTALLED_BUT_NOT_SHARE_CAPABLE] — installed, but no matching share
  *   activity was found. The app is NOT reported as missing.
  * - [NOT_INSTALLED] — the package is not present.
