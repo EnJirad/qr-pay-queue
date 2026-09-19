@@ -34,7 +34,10 @@ evidence is what the **banking app** shows, not what this app shows.
 | The import screen ends by itself and never sticks on "5 / 5" | `ImportCompletionTest` |
 | 1 / 3 / 10 images become 1 / 3 / 10 queued items | `QueueImportTest` |
 | Queue state machine rules | `PaymentQueueTest`, `PaymentStatusTest` |
-| APK builds, tests pass, lint passes, artifact published | the GitHub Actions run recorded in `AI_HANDOFF.md` |
+| APK builds | GitHub Actions run `35440865143` (commit `3f95a7c`): `assembleDebug` PASS, APK `9.2M` |
+| Unit tests pass | same run: `testDebugUnitTest` PASS, 69 test methods |
+| Lint passes | same run: `lintDebug` PASS (`abortOnError = true`) |
+| APK artifact published | artifact `qr-payment-queue-v0.4.1-debug` in run `35440865143` |
 
 Not verified on a device: the photo picker UI, whether tapping **แชร์ไป K PLUS**
 opens K PLUS directly, whether the chooser is skipped, whether K PLUS accepts the

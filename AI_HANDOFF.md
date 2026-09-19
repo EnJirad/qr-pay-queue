@@ -175,7 +175,8 @@ the Android platform. No dependency was added or removed, and
 
 ## Tests
 
-JUnit 4 test methods, all pure JVM (no device, no emulator, no `@Ignore`):
+69 JUnit 4 test methods across 6 classes, all pure JVM (no device, no emulator,
+no `@Ignore`, no new dependency):
 
 - `PaymentStatusTest` — only `COMPLETED` counts as completed; hand-off ownership
   (`holdsHandoff`); only `WAITING_USER` owes the user an answer; retry targets;
@@ -205,24 +206,45 @@ JUnit 4 test methods, all pure JVM (no device, no emulator, no `@Ignore`):
   still attempted, not installed cannot be handed off, non-image declared types
   become the generic image type.
 
-Test count and the CI result are recorded below once the V0.4.1 run has actually
-finished.
+Test methods per class: `PaymentQueueTest` 20, `QueueImportTest` 12,
+`ImportCompletionTest` 11, `PaymentStatusTest` 10, `KPlusTargetTest` 9,
+`ShareIntentSpecTest` 7.
 
 ## Build result
 
 - LOCAL BUILD: **not performed / not possible** — this sandbox has no JDK, no
   Android SDK, no emulator and no device (`java` is not on `PATH`). The build
   authority is GitHub Actions.
-- GITHUB ACTIONS: **see the CI result section**.
+- GITHUB ACTIONS: **SUCCESS** on commit `3f95a7c` (run `35440865143`, 2m1s). See
+  the CI result section for the per-step detail.
 
 ## CI result
 
-Recorded from the real workflow runs of this change:
+**GREEN.** Every step of `Android CI` succeeded on commit
+`3f95a7c5261520d63fa0eaeb264cd07017a47a6a` (the tip of this change):
 
-- V0.4.1 code run: _to be filled in from the run triggered by the commit below._
-- V0.4.0 reference (still the last fully green run before this change): run
-  `35438989074` on commit `b0d5c8b` — `testDebugUnitTest` PASS,
-  `lintDebug` PASS, `assembleDebug` PASS, artifact uploaded.
+- Run URL: https://github.com/EnJirad/qr-pay-queue/actions/runs/35440865143
+- `testDebugUnitTest`: **PASS** (69 test methods, `:app:testDebugUnitTest`
+  succeeded — Gradle fails the task on any failing test)
+- `lintDebug`: **PASS** (`abortOnError = true`; report written to
+  `app/build/reports/lint-results-debug.html`)
+- `assembleDebug`: **PASS**
+- APK existence / non-empty / inspect: **PASS**
+- Artifact upload `qr-payment-queue-v0.4.1-debug`: **PASS**
+- Build time: 2m1s
+
+### V0.4.1 runs that failed first (kept so the failures are not repeated)
+
+1. `35440551412` — **failed** `:app:compileDebugUnitTestKotlin` with 8 errors, all
+   in `PaymentQueueTest`: the per-item transitions take an `itemId`, and several
+   calls still used the old V0.4 shape (`.confirmCompleted()`, `.markUnknown()`)
+   or passed a timestamp where the item id belongs. Production code compiled on
+   this run (`:app:compileDebugKotlin` succeeded).
+2. `35440704872` — **failed** 2 of 69 unit tests, both wrong assertions rather
+   than wrong production behaviour: a `FAILED` hand-off does not block the queue,
+   so a second hand-off really does start (`SHARING`), and a refused hand-off
+   leaves the item unchanged (`QUEUED`) rather than moving it to `UNKNOWN`.
+   Fixed the assertions and spelled out the intent in both tests.
 
 ### Earlier V0.4 runs (kept so the failures are not repeated)
 
@@ -241,7 +263,9 @@ Recorded from the real workflow runs of this change:
 - Workflow artifact name: `qr-payment-queue-v0.4.1-debug`
   (uploaded with `if-no-files-found: error`)
 - Path inside the workflow: `app/build/outputs/apk/debug/app-debug.apk`
-- Sizes and the actual build time are recorded from the CI run above.
+- Last observed V0.4.1 build (run `35440865143`, commit `3f95a7c`): APK exists and
+  is non-zero — `9.2M`, containing `classes.dex` (18,137,284 bytes) and
+  `AndroidManifest.xml` (6,512 bytes).
 
 ## Real-device verification
 
