@@ -18,17 +18,18 @@ K PLUS share integration. Version 0.2.0 was the V2 workflow itself.
 
 ## Current status
 
-**Audit + K PLUS share integration implemented; CI verification pending for this
-commit.** The sandbox has **no JDK, no Android SDK, no emulator and no device**,
-so nothing here can be compiled or run locally: the build authority is GitHub
-Actions, and device behaviour can only be verified by a human with a phone.
+**Audit + K PLUS share integration implemented and verified by CI on commit
+`0a2eceb`.** The sandbox has **no JDK, no Android SDK, no emulator and no
+device**, so nothing here can be compiled or run locally: the build authority is
+GitHub Actions, and device behaviour can only be verified by a human with a
+phone.
 
 Honest summary of what is and is not proven:
 
 | Area | Status |
 | --- | --- |
-| Builds, unit tests, lint, APK, artifact | CI (see "Build result") |
-| QR import / decode / validate / queue logic | unit tested in CI (85 tests) |
+| Builds, unit tests, lint, APK, artifact | CI green (see "Build result") |
+| QR import / decode / validate / queue logic | unit tested in CI (86 tests) |
 | Share intent construction (`content://`, grant, `image/*`) | source-reviewed + unit tested classification logic |
 | Share sheet listing K PLUS | **not verified** (needs a device) |
 | K PLUS accepting/reading the shared QR | **not verified** (needs a device, and is ultimately KBank's behaviour) |
@@ -187,8 +188,8 @@ dependency, and it is used for both single and multi QR decoding.
 
 ## Tests performed
 
-85 JUnit 4 test methods (up from 72), all run in CI with
-`./gradlew testDebugUnitTest`. New this session:
+86 JUnit 4 test methods (up from 72; no `@Ignore` anywhere), all run in CI with
+`./gradlew testDebugUnitTest` on commit `0a2eceb`. New this session:
 
 - `QrImageDecoderTest` — an image with two different QR codes is reported as
   `Ambiguous` with both payloads; an image with one QR is not ambiguous.
@@ -209,24 +210,30 @@ dependency, and it is used for both single and multi QR decoding.
 - GITHUB ACTIONS for 0.2.0 (commit `7dd3ed9`, run `35430531448`): **SUCCESS** —
   `testDebugUnitTest` (72 tests), `lintDebug`, `assembleDebug`, APK checks and
   artifact upload, 2m38s.
-- GITHUB ACTIONS for 0.3.0: **PENDING** for the commit containing this file.
-  Update this line with the run URL and conclusion once observed, then state the
-  test count, APK size and artifact ID here.
+- GITHUB ACTIONS for 0.3.0 (commit `0a2eceb`, run `35431644361`): **SUCCESS**,
+  1m46s. `testDebugUnitTest` (86 tests) BUILD SUCCESSFUL in 19s → `lintDebug`
+  BUILD SUCCESSFUL in 24s → `assembleDebug` BUILD SUCCESSFUL in 8s → APK
+  existence/non-empty/inspect steps → artifact upload. Log:
+  `https://github.com/EnJirad/qr-pay-queue/actions/runs/35431644361`
 - Earlier failures worth knowing: the old workflow died inside
   `android-actions/setup-android@v3` before Gradle (fixed by pinning
   `ubuntu-24.04` + `setup-android@v4` with explicit packages); the first V2 run
   failed one parser test because a fixture carried the bill-payment AID under tag
-  29 (fixed by identifying the scheme by AID and correcting the fixture).
+  29 (fixed by identifying the scheme by AID and correcting the fixture); the
+  first audit run (`35431475484`) failed one `ShareTargetsTest` case because
+  `ShareTargets.classify` counted non-image targets as viable image targets
+  (fixed in production code, not by relaxing the test).
 
 ## APK result
 
 Expected path: `app/build/outputs/apk/debug/app-debug.apk`.
 
-Last observed build (0.2.0, run `35430531448`): APK exists, non-zero (`9.5M`,
-`classes.dex` + `AndroidManifest.xml` present), uploaded as artifact
-`qr-payment-queue-debug-apk` (9,482,077 bytes, artifact ID `10580268112`). The
-0.3.0 run must be observed and recorded here before this section is treated as
-current.
+Last observed build (0.3.0, run `35431644361`): APK exists and is non-zero —
+`9.5M`, containing `classes.dex` (18,137,284 bytes) and `AndroidManifest.xml`
+(6,512 bytes) — uploaded as artifact `qr-payment-queue-debug-apk`
+(9,498,238 bytes, artifact ID `10580853423`, not expired).
+For comparison, 0.2.0 (run `35430531448`) produced the same artifact name at
+9,482,077 bytes (artifact ID `10580268112`).
 
 ## Real-device verification
 
