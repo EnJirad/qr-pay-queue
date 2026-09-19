@@ -69,8 +69,11 @@ class QueueImportTest {
             storedImagePath = "/data/app/qrqueue/images/item-1.png",
             mimeType = "image/png",
             outcome = ItemOutcome.Accepted(payload),
+            importedAtMillis = 1_700_000_000_000L,
         )
 
+        assertEquals(1_700_000_000_000L, item.importedAtMillis)
+        assertNull(item.decidedAtMillis)
         assertEquals(PaymentStatus.READY, item.status)
         assertEquals(75_000L, item.amountSatang)
         assertEquals("081-234-5678", item.recipient)
@@ -91,8 +94,10 @@ class QueueImportTest {
             storedImagePath = null,
             mimeType = null,
             outcome = ItemOutcome.Rejected(ValidationIssue.QR_NOT_FOUND, "no finder pattern"),
+            importedAtMillis = 1_700_000_000_001L,
         )
 
+        assertEquals(1_700_000_000_001L, item.importedAtMillis)
         assertEquals(PaymentStatus.INVALID, item.status)
         assertEquals(ValidationIssue.QR_NOT_FOUND, item.issue)
         assertEquals("no finder pattern", item.issueDetail)
@@ -111,6 +116,7 @@ class QueueImportTest {
             storedImagePath = "/data/app/qrqueue/images/item-3.png",
             mimeType = "image/png",
             outcome = ItemOutcome.Rejected(ValidationIssue.DUPLICATE_PAYLOAD),
+            importedAtMillis = 1_700_000_000_002L,
         )
 
         assertEquals(PaymentStatus.DUPLICATE, item.status)

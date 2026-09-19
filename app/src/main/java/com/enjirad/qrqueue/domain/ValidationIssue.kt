@@ -16,5 +16,11 @@ enum class ValidationIssue(val label: String, val status: PaymentStatus) {
     UNSUPPORTED_PAYLOAD("This QR format is not supported", PaymentStatus.INVALID),
     MISSING_PAYMENT_INFO("The QR has no payment information", PaymentStatus.INVALID),
     DUPLICATE_PAYLOAD("Duplicate of another QR in this queue", PaymentStatus.DUPLICATE),
+
+    /**
+     * More than one QR code in the same image. The app never guesses which code
+     * the user meant, because paying the wrong one is worse than skipping it.
+     */
+    MULTIPLE_QR_CODES("This image contains more than one QR code", PaymentStatus.INVALID),
     ;
 }

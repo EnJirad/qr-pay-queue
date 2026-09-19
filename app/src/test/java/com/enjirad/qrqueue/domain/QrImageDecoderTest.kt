@@ -16,6 +16,9 @@ class QrImageDecoderTest {
     private val payload =
         "00020101021229370016A0000006770101110113006681234567853037645406750.005802TH5912SOMCHAI SHOP6007Bangkok62160512INV-2026-00163049E28"
 
+    private val otherPayload =
+        "00020101021229370016A00000067701011101130066898765432153037645406450.005802TH630475AC"
+
     @Test
     fun decodesARenderedQrCode() {
         val size = 320
@@ -36,6 +39,35 @@ class QrImageDecoderTest {
     }
 
     @Test
+    fun anImageWithTwoDifferentQrCodesIsReportedAsAmbiguous() {
+        val size = 600
+        val half = size / 2
+        val pixels = IntArray(size * size) { WHITE }
+        drawQr(pixels, size, 0, 0, half, payload)
+        drawQr(pixels, size, half, half, half, otherPayload)
+
+        val result = QrImageDecoder.decodeArgb(pixels, size, size)
+
+        assertTrue(result is QrDecodeResult.Ambiguous)
+        val payloads = (result as QrDecodeResult.Ambiguous).payloads
+        assertEquals(2, payloads.size)
+        assertTrue(payloads.contains(payload))
+        assertTrue(payloads.contains(otherPayload))
+    }
+
+    @Test
+    fun anImageWithOneQrCodeIsNotAmbiguous() {
+        val size = 600
+        val pixels = IntArray(size * size) { WHITE }
+        drawQr(pixels, size, 0, 0, size / 2, payload)
+
+        val result = QrImageDecoder.decodeArgb(pixels, size, size)
+
+        assertTrue(result is QrDecodeResult.Decoded)
+        assertEquals(payload, (result as QrDecodeResult.Decoded).text)
+    }
+
+    @Test
     fun reportsNoQrForAnImageWithoutOne() {
         val size = 200
         val blank = IntArray(size * size) { WHITE }
@@ -53,14 +85,29 @@ class QrImageDecoderTest {
     }
 
     private fun renderQr(text: String, size: Int): IntArray {
+        val pixels = IntArray(size * size) { WHITE }
+        drawQr(pixels, size, 0, 0, size, text)
+        return pixels
+    }
+
+    /** Draws one QR code into a region of an existing ARGB canvas. */
+    private fun drawQr(
+        canvas: IntArray,
+        canvasWidth: Int,
+        left: Int,
+        top: Int,
+        size: Int,
+        text: String,
+    ) {
         val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size)
-        val pixels = IntArray(size * size)
-        for (y in 0 until size) {
-            for (x in 0 until size) {
-                pixels[y * size + x] = if (matrix.get(x, y)) BLACK else WHITE
+        for (y in 0 until matrix.height) {
+            for (x in 0 until matrix.width) {
+                val canvasX = left + x
+                val canvasY = top + y
+                if (canvasX >= canvasWidth || canvasY >= canvasWidth) continue
+                canvas[canvasY * canvasWidth + canvasX] = if (matrix.get(x, y)) BLACK else WHITE
             }
         }
-        return pixels
     }
 
     private companion object {

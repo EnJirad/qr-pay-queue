@@ -27,6 +27,10 @@ object QrValidation {
     fun evaluate(decode: QrDecodeResult, acceptedPayloadKeys: Set<String>): ItemOutcome {
         val text = when (decode) {
             is QrDecodeResult.Decoded -> decode.text
+            is QrDecodeResult.Ambiguous -> return ItemOutcome.Rejected(
+                ValidationIssue.MULTIPLE_QR_CODES,
+                "${decode.payloads.size} different QR codes were found in this image",
+            )
             QrDecodeResult.Unreadable -> return ItemOutcome.Rejected(ValidationIssue.UNREADABLE_IMAGE)
             QrDecodeResult.NotFound -> return ItemOutcome.Rejected(ValidationIssue.QR_NOT_FOUND)
             is QrDecodeResult.Failed -> return ItemOutcome.Rejected(ValidationIssue.QR_NOT_FOUND, decode.message)

@@ -32,6 +32,10 @@ data class QueueItem(
     val payloadLabel: String? = null,
     /** The decoded payload text, kept for duplicate detection and debugging. */
     val rawPayload: String? = null,
+    /** When this image was imported (wall clock, millis). */
+    val importedAtMillis: Long? = null,
+    /** When the user recorded a final result for this item, if they have. */
+    val decidedAtMillis: Long? = null,
 ) {
     /** True when the queue knows how much this item is for. */
     val hasKnownAmount: Boolean get() = amountSatang != null

@@ -40,6 +40,18 @@ class QrValidationTest {
     }
 
     @Test
+    fun anImageWithSeveralDifferentQrCodesIsRejectedInsteadOfGuessed() {
+        val outcome = QrValidation.evaluate(
+            QrDecodeResult.Ambiguous(listOf(validPayload, "00020101021153037645403300.00")),
+            emptySet(),
+        )
+        val rejected = outcome as ItemOutcome.Rejected
+        assertEquals(ValidationIssue.MULTIPLE_QR_CODES, rejected.issue)
+        assertEquals(PaymentStatus.INVALID, rejected.issue.status)
+        assertTrue(rejected.detail?.contains("2") == true)
+    }
+
+    @Test
     fun duplicatePayloadIsRejectedEvenWhenTheQrIsValid() {
         val accepted = setOf(QrValidation.payloadKey(validPayload))
         val outcome = QrValidation.evaluate(QrDecodeResult.Decoded(validPayload), accepted)

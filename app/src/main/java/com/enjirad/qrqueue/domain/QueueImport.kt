@@ -71,6 +71,7 @@ object QueueImport {
         storedImagePath: String?,
         mimeType: String?,
         outcome: ItemOutcome,
+        importedAtMillis: Long,
     ): QueueItem = when (outcome) {
         is ItemOutcome.Accepted -> QueueItem(
             id = id,
@@ -85,6 +86,7 @@ object QueueImport {
             issue = null,
             payloadLabel = outcome.payload.format.label,
             rawPayload = outcome.payload.raw,
+            importedAtMillis = importedAtMillis,
         )
         is ItemOutcome.Rejected -> QueueItem(
             id = id,
@@ -100,6 +102,7 @@ object QueueImport {
             issueDetail = outcome.detail,
             payloadLabel = null,
             rawPayload = null,
+            importedAtMillis = importedAtMillis,
         )
     }
 

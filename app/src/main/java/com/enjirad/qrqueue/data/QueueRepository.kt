@@ -68,6 +68,30 @@ class QueueRepository(private val context: Context) {
     /** Resolves the stored copy of an item image, when it still exists. */
     fun storedFile(path: String?): File? = path?.let { File(it) }?.takeIf { it.isFile }
 
+    /** Deletes specific stored image copies (never anything outside them). */
+    fun deleteImages(paths: List<String>): Int =
+        paths.count { path -> storedFile(path)?.delete() == true }
+
+    /**
+     * Deletes image copies that no queue item references — for example after an
+     * import was interrupted before the queue state was written. The original
+     * gallery images are never involved: only this app's own image directory is
+     * inspected.
+     */
+    fun sweepOrphanImages(referencedPaths: Set<String>): Int {
+        val files = imageDirectory().listFiles() ?: return 0
+        val referenced = referencedPaths
+            .mapNotNull { path -> runCatching { File(path).canonicalPath }.getOrNull() }
+            .toSet()
+        var deleted = 0
+        files.forEach { file ->
+            if (!file.isFile) return@forEach
+            val canonical = runCatching { file.canonicalPath }.getOrNull() ?: return@forEach
+            if (canonical !in referenced && file.delete()) deleted++
+        }
+        return deleted
+    }
+
     // ---- queue state --------------------------------------------------------
 
     /** Reads the persisted queue, or null when there is none / it is unreadable. */
@@ -77,11 +101,17 @@ class QueueRepository(private val context: Context) {
         return runCatching { parseQueue(JSONObject(file.readText())) }.getOrNull()
     }
 
-    /** Persists the queue state, so recreation or backgrounding cannot lose it. */
-    fun saveQueue(queue: PaymentQueue) {
+    /**
+     * Persists the queue state, so recreation or backgrounding cannot lose it.
+     *
+     * @return true when the state really reached disk; callers must tell the user
+     *   when it did not, because a queue that cannot be persisted is a payment
+     *   queue with an unknown future.
+     */
+    fun saveQueue(queue: PaymentQueue): Boolean {
         val directory = rootDirectory()
-        if (!directory.isDirectory && !directory.mkdirs()) return
-        runCatching { stateFile().writeText(serializeQueue(queue).toString()) }
+        if (!directory.isDirectory && !directory.mkdirs()) return false
+        return runCatching { stateFile().writeText(serializeQueue(queue).toString()) }.isSuccess
     }
 
     /**
@@ -120,6 +150,7 @@ class QueueRepository(private val context: Context) {
         put("currentIndex", queue.currentIndex)
         put("started", queue.started)
         put("finished", queue.finished)
+        put("updatedAtMillis", queue.updatedAtMillis)
         put("items", JSONArray().apply { queue.items.forEach { put(serializeItem(it)) } })
     }
 
@@ -137,6 +168,8 @@ class QueueRepository(private val context: Context) {
         putNullable("issueDetail", item.issueDetail)
         putNullable("payloadLabel", item.payloadLabel)
         putNullable("rawPayload", item.rawPayload)
+        putNullable("importedAtMillis", item.importedAtMillis)
+        putNullable("decidedAtMillis", item.decidedAtMillis)
     }
 
     private fun parseQueue(json: JSONObject): PaymentQueue {
@@ -151,6 +184,7 @@ class QueueRepository(private val context: Context) {
             currentIndex = json.optInt("currentIndex", PaymentQueue.NO_CURRENT_ITEM),
             started = json.optBoolean("started", false),
             finished = json.optBoolean("finished", false),
+            updatedAtMillis = json.optLong("updatedAtMillis", 0L),
         )
     }
 
@@ -170,6 +204,8 @@ class QueueRepository(private val context: Context) {
             issueDetail = json.stringOrNull("issueDetail"),
             payloadLabel = json.stringOrNull("payloadLabel"),
             rawPayload = json.stringOrNull("rawPayload"),
+            importedAtMillis = json.longOrNull("importedAtMillis"),
+            decidedAtMillis = json.longOrNull("decidedAtMillis"),
         )
     }
 

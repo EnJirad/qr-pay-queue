@@ -63,8 +63,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.enjirad.qrqueue.R
+import com.enjirad.qrqueue.data.KPlusAvailability
 import com.enjirad.qrqueue.data.QrImageFiles
 import com.enjirad.qrqueue.data.QrShare
+import com.enjirad.qrqueue.data.ShareTargets
 import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueItem
@@ -81,7 +83,10 @@ data class QueueCallbacks(
     val onStartConfirmed: () -> Unit,
     val onStartDismissed: () -> Unit,
     val onShareCurrent: () -> Unit,
+    val onViewQr: () -> Unit,
     val onAlreadyPaid: () -> Unit,
+    val onReShareConfirmed: () -> Unit,
+    val onReShareDismissed: () -> Unit,
     val onConfirmSuccess: () -> Unit,
     val onConfirmFailure: () -> Unit,
     val onReportUnknown: () -> Unit,
@@ -109,9 +114,9 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
         }
     }
 
-    LaunchedEffect(state.shareRequest) {
-        val request = state.shareRequest ?: return@LaunchedEffect
-        viewModel.onShareLaunched(launchShare(context, request))
+    LaunchedEffect(state.imageIntent) {
+        val request = state.imageIntent ?: return@LaunchedEffect
+        viewModel.onImageIntentLaunched(request.kind, launchImageIntent(context, request))
     }
 
     QueueScreen(
@@ -126,7 +131,10 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
             onStartConfirmed = viewModel::onStartConfirmed,
             onStartDismissed = viewModel::onStartConfirmationDismissed,
             onShareCurrent = viewModel::onShareQrRequested,
+            onViewQr = viewModel::onViewQrRequested,
             onAlreadyPaid = viewModel::onPaymentAlreadyCompletedInBank,
+            onReShareConfirmed = viewModel::onReShareConfirmed,
+            onReShareDismissed = viewModel::onReShareDismissed,
             onConfirmSuccess = viewModel::onConfirmSuccess,
             onConfirmFailure = viewModel::onConfirmFailure,
             onReportUnknown = viewModel::onReportUnknown,
@@ -139,10 +147,16 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
     )
 }
 
-/** Hands the stored QR image to another app; returns false when nothing opened. */
-private fun launchShare(context: Context, request: ShareRequest): Boolean {
+/**
+ * Hands the stored QR image to another app (share chooser) or opens it in a
+ * viewer. Returns false when nothing could be opened.
+ */
+private fun launchImageIntent(context: Context, request: ImageIntentRequest): Boolean {
     val file = File(request.filePath)
-    val intent = QrShare.shareIntent(context, file, request.mimeType, request.fileName) ?: return false
+    val intent = when (request.kind) {
+        ImageIntentKind.SHARE -> QrShare.shareIntent(context, file, request.mimeType, request.fileName)
+        ImageIntentKind.VIEW -> QrShare.viewIntent(context, file, request.mimeType)
+    } ?: return false
     return try {
         context.startActivity(intent)
         true
@@ -161,6 +175,9 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         QueueNotice.QUEUE_ALREADY_RUNNING -> stringResource(R.string.notice_queue_running)
         QueueNotice.NOTHING_TO_PAY -> stringResource(R.string.notice_nothing_to_pay)
         QueueNotice.SHARE_FAILED -> stringResource(R.string.notice_share_failed)
+        QueueNotice.SHARE_TARGET_UNAVAILABLE -> stringResource(R.string.notice_share_target_unavailable)
+        QueueNotice.VIEW_TARGET_UNAVAILABLE -> stringResource(R.string.notice_view_target_unavailable)
+        QueueNotice.QUEUE_NOT_SAVED -> stringResource(R.string.notice_queue_not_saved)
         QueueNotice.QUEUE_CLEARED -> stringResource(R.string.notice_queue_cleared)
         null -> null
     }
@@ -176,6 +193,13 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         ClearQueueDialog(
             onConfirm = callbacks.onClearConfirmed,
             onDismiss = callbacks.onClearDismissed,
+        )
+    }
+
+    if (state.reShareConfirmationVisible) {
+        ReShareDialog(
+            onConfirm = callbacks.onReShareConfirmed,
+            onDismiss = callbacks.onReShareDismissed,
         )
     }
 
@@ -757,7 +781,7 @@ private fun ProcessingContent(queue: PaymentQueue, callbacks: QueueCallbacks) {
     CurrentItemCard(item = item)
 
     when {
-        item.status == PaymentStatus.READY -> ReadyActions(callbacks = callbacks)
+        item.status == PaymentStatus.READY -> ReadyActions(item = item, callbacks = callbacks)
         item.status == PaymentStatus.UNKNOWN -> UnknownActions(callbacks = callbacks)
         else -> ConfirmationActions(callbacks = callbacks)
     }
@@ -861,7 +885,12 @@ private fun QrImagePreview(path: String?) {
 }
 
 @Composable
-private fun ReadyActions(callbacks: QueueCallbacks) {
+private fun ReadyActions(item: QueueItem, callbacks: QueueCallbacks) {
+    val context = LocalContext.current
+    // Describes the real share sheet on this device; never forces a target.
+    val targets = remember(item.id, item.mimeType) {
+        ShareTargets.query(context, item.mimeType)
+    }
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -874,9 +903,32 @@ private fun ReadyActions(callbacks: QueueCallbacks) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (!targets.canShare) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.share_no_target_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            } else {
+                val kPlusNote = when (targets.kPlus) {
+                    KPlusAvailability.NOT_INSTALLED -> R.string.share_kplus_not_installed_note
+                    KPlusAvailability.INSTALLED_NOT_SHARE_TARGET -> R.string.share_kplus_not_share_target_note
+                    KPlusAvailability.SHARE_TARGET -> null
+                }
+                if (kPlusNote != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(kPlusNote),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Spacer(Modifier.height(14.dp))
             Button(
                 onClick = callbacks.onShareCurrent,
+                enabled = targets.canShare,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -899,6 +951,14 @@ private fun ReadyActions(callbacks: QueueCallbacks) {
                     text = stringResource(R.string.action_already_paid),
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+            if (!targets.canShare) {
+                TextButton(onClick = callbacks.onViewQr, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.action_view_qr),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }
@@ -1138,6 +1198,29 @@ private fun LabelValueRow(label: String, value: String, emphasized: Boolean = fa
     }
 }
 
+/**
+ * Shown before sharing an item that was already handed off: repeating a share is
+ * how the same bill gets paid twice.
+ */
+@Composable
+private fun ReShareDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.reshare_dialog_title)) },
+        text = { Text(text = stringResource(R.string.reshare_dialog_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(R.string.reshare_dialog_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
 @Composable
 private fun ClearQueueDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
@@ -1207,7 +1290,10 @@ private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onStartConfirmed = {},
     onStartDismissed = {},
     onShareCurrent = {},
+    onViewQr = {},
     onAlreadyPaid = {},
+    onReShareConfirmed = {},
+    onReShareDismissed = {},
     onConfirmSuccess = {},
     onConfirmFailure = {},
     onReportUnknown = {},

@@ -23,6 +23,8 @@ data class PaymentQueue(
     val currentIndex: Int = NO_CURRENT_ITEM,
     val started: Boolean = false,
     val finished: Boolean = false,
+    /** Last time anything in this queue changed (wall clock, millis). */
+    val updatedAtMillis: Long = 0L,
 ) {
 
     val currentItem: QueueItem? get() = items.getOrNull(currentIndex)
@@ -117,21 +119,32 @@ data class PaymentQueue(
     fun reportUnknown(): PaymentQueue =
         updateCurrent(from = PaymentStatus.WAITING_CONFIRMATION, to = PaymentStatus.UNKNOWN)
 
-    /** Explicit "payment successful" — the only way an item becomes paid. */
-    fun confirmSuccess(): PaymentQueue = settleCurrent(PaymentStatus.SUCCESS)
+    /**
+     * Explicit "payment successful" — the only way an item becomes paid.
+     *
+     * @param nowMillis the user's confirmation time, recorded on the item.
+     */
+    fun confirmSuccess(nowMillis: Long = 0L): PaymentQueue =
+        settleCurrent(PaymentStatus.SUCCESS, nowMillis)
 
-    /** Explicit "payment failed" — recorded, then the queue moves on. */
-    fun confirmFailure(): PaymentQueue = settleCurrent(PaymentStatus.PAYMENT_FAILED)
+    /**
+     * Explicit "payment failed" — recorded, then the queue moves on.
+     *
+     * @param nowMillis the user's confirmation time, recorded on the item.
+     */
+    fun confirmFailure(nowMillis: Long = 0L): PaymentQueue =
+        settleCurrent(PaymentStatus.PAYMENT_FAILED, nowMillis)
 
     /**
      * Resolves an [PaymentStatus.UNKNOWN] item with the real result the user
      * found in the banking app. Refused for any other status, so an unresolved
      * result can never be advanced by accident.
      */
-    fun resolveUnknown(success: Boolean): PaymentQueue {
+    fun resolveUnknown(success: Boolean, nowMillis: Long = 0L): PaymentQueue {
         val item = currentItem ?: return this
         if (item.status != PaymentStatus.UNKNOWN) return this
-        return settleCurrent(if (success) PaymentStatus.SUCCESS else PaymentStatus.PAYMENT_FAILED)
+        val result = if (success) PaymentStatus.SUCCESS else PaymentStatus.PAYMENT_FAILED
+        return settleCurrent(result, nowMillis)
     }
 
     /**
@@ -178,13 +191,16 @@ data class PaymentQueue(
      * one. Only reachable from [PaymentStatus.WAITING_CONFIRMATION] or
      * [PaymentStatus.UNKNOWN].
      */
-    private fun settleCurrent(result: PaymentStatus): PaymentQueue {
+    private fun settleCurrent(result: PaymentStatus, nowMillis: Long): PaymentQueue {
         val index = currentIndex
         val item = items.getOrNull(index) ?: return this
         if (item.status != PaymentStatus.WAITING_CONFIRMATION && item.status != PaymentStatus.UNKNOWN) {
             return this
         }
-        val settled = items.replacingAt(index, item.copy(status = result))
+        val settled = items.replacingAt(
+            index,
+            item.copy(status = result, decidedAtMillis = nowMillis),
+        )
         val next = settled.indexOfFirst { it.status.isProcessable }
         return if (next >= 0) {
             copy(items = settled, currentIndex = next, finished = false)

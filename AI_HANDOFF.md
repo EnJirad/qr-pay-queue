@@ -1,289 +1,319 @@
 # AI_HANDOFF.md
 
-This handoff reflects reality. Nothing below claims a build that has not been
-observed. Update it after every meaningful work session.
+This handoff reflects reality. Nothing below claims a build, an APK or a device
+result that has not been observed. Update it after every meaningful work session.
 
 ## Project
 
-QR Payment Queue — native Android application for organizing QR payment tasks.
+QR Payment Queue — native Android application for organizing QR payment tasks and
+handing each QR to a banking app (K PLUS) through Android's own share sheet.
+
+Package `com.enjirad.qrqueue`. Native Android only: Kotlin + Jetpack Compose +
+AndroidX + Material 3 + Gradle Kotlin DSL. No web technology anywhere.
 
 ## Current version
 
-0.2.0 (V2 — multi-image QR import + sequential payment queue)
+0.3.0 (versionCode 3) — V2 workflow plus the pre-production audit and the
+K PLUS share integration. Version 0.2.0 was the V2 workflow itself.
 
 ## Current status
 
-**V2 implemented and verified green in GitHub Actions.** This session replaced
-the V0.1 "import is planned" placeholder with the real V2 workflow (multi-image
-photo-picker import, ZXing decoding, EMVCo validation, duplicate detection, a
-sequential queue with explicit confirmation, persistence and a summary).
-The sandbox has **no JDK and no Android SDK**, so no local Gradle build was
-possible here; verification is the observed CI run for commit `7dd3ed9`
-(run [35430531448](https://github.com/EnJirad/qr-pay-queue/actions/runs/35430531448)):
-unit tests, lint, `assembleDebug`, APK existence/size checks and artifact upload
-all passed in 2m38s.
+**Audit + K PLUS share integration implemented; CI verification pending for this
+commit.** The sandbox has **no JDK, no Android SDK, no emulator and no device**,
+so nothing here can be compiled or run locally: the build authority is GitHub
+Actions, and device behaviour can only be verified by a human with a phone.
 
-## V2 features implemented
+Honest summary of what is and is not proven:
 
-1. **Multi-image import** through Android's photo picker
-   (`ActivityResultContracts.PickMultipleVisualMedia`, no item cap so the
-   device's own limit always applies). No folder picking, no storage
-   permission, no device scan. Cancellation is handled.
-2. **App-private image storage** — every selected image is copied into
-   `filesDir/qrqueue/images/<itemId>.<ext>`. Gallery originals are never moved,
-   renamed or deleted; clearing a queue deletes only app-created files.
-3. **Real QR decoding** with ZXing core (`MultiFormatReader`, `TRY_HARDER`,
-   QR_CODE only) from the pixels of the imported image; one downscaled pass
-   plus a full-resolution retry when the QR is small in a big screenshot.
-4. **Validation layer** distinguishing unreadable image, no QR found, malformed
-   payload, CRC mismatch, unsupported payload (AID/currency/country), missing
-   payment information and duplicate payload.
-5. **Real payload parsing** — EMVCo TLV for PromptPay credit transfer (tag 29,
-   AID `A000000677010111`) and Thai QR bill payment (tag 30, AID
-   `A000000677010112`), with CRC-16/CCITT-FALSE verification. Amounts are parsed
-   from tag 54 exactly (satang); a QR without an amount stays without an amount.
-6. **Duplicate detection** on the normalised decoded payload text, so the same
-   QR screenshot imported twice is reported instead of paid twice.
-7. **Queue review screen** listing every image (ordinal, file name, recipient,
-   format, amount, status chip, rejection reason) plus ready/invalid/duplicate
-   counts, queue total and a note when QR codes carry no amount.
-8. **Start confirmation** summarising QR codes to pay, total, invalid and
-   duplicate counts before the run begins.
-9. **Sequential processing**, one item at a time, with an explicit state
-   machine (`PaymentQueue`): `READY → SUBMITTED → WAITING_CONFIRMATION →
-   SUCCESS`, failure path to `PAYMENT_FAILED`, and `UNKNOWN` for anything the
-   user cannot resolve on the spot.
-10. **Legitimate Android hand-off only** — `ACTION_SEND` chooser through a
-    `FileProvider` for the app-private image. No PIN/OTP/biometric entry, no
-    Accessibility automation, no hidden bank API calls, no bank credentials.
-11. **Explicit payment confirmation** — the app asks "Have you completed this
-    payment?" with successful / failed / something-went-wrong. Sharing a QR
-    never marks it paid. `UNKNOWN` blocks the queue and is never auto-retried.
-12. **Progress display** — `Payment n / m`, a progress bar, completed and
-    remaining counts and amounts, all from queue state.
-13. **Final summary** — completed, successful, failed, unknown, excluded
-    invalid/duplicates, total confirmed paid and queue total.
-14. **Persistence / interruption handling** — the whole queue is persisted as
-    JSON after every mutation; an item caught mid-hand-off when the app stops
-    comes back as `UNKNOWN` and must be resolved explicitly. Restarting the app
-    never marks a payment successful.
+| Area | Status |
+| --- | --- |
+| Builds, unit tests, lint, APK, artifact | CI (see "Build result") |
+| QR import / decode / validate / queue logic | unit tested in CI (85 tests) |
+| Share intent construction (`content://`, grant, `image/*`) | source-reviewed + unit tested classification logic |
+| Share sheet listing K PLUS | **not verified** (needs a device) |
+| K PLUS accepting/reading the shared QR | **not verified** (needs a device, and is ultimately KBank's behaviour) |
+| Return-from-K PLUS flow, process death on device | **not verified** (needs a device) |
+
+## K PLUS integration (implemented this session)
+
+The hand-off is standard Android only — no private API, no automation:
+
+```
+QR image (app-private copy)
+  → FileProvider content:// URI + FLAG_GRANT_READ_URI_PERMISSION
+  → Intent.ACTION_SEND + EXTRA_STREAM, type image/png (fallback image/*)
+  → Android share sheet (resolver chooses the target; no package is forced)
+  → K PLUS: reads the QR, shows payment data
+  → USER: PIN / biometric / confirm inside K PLUS
+  → QR Payment Queue: user records the result (successful / failed / unknown)
+  → next item
+```
+
+Details that matter:
+
+- `data/QrShare.kt` builds the chooser; the URI is always `content://` from
+  `FileProvider` (never `file://`), with a per-use read grant.
+- `data/ShareTargets.kt` asks the platform what can actually receive the image.
+  `classify()` is pure and unit tested; `query()` is the Android layer. It also
+  reports whether **K PLUS** is a share target, installed but not a share target,
+  or absent — the processing screen then explains that in plain language instead
+  of leaving an empty share sheet unexplained.
+- The MIME type starts as the real stored type and falls back to `image/*` when
+  nothing handles the specific one, which is a common reason a bank app does not
+  appear in the chooser.
+- The chooser stays in the app's own task when launched from the activity, so
+  returning from K PLUS lands back on the queue. `FLAG_ACTIVITY_NEW_TASK` is only
+  added when there is no activity task to launch into.
+- `<queries>` in `AndroidManifest.xml` (ACTION_SEND + `image/*`, plus the K PLUS
+  package) makes share-target detection accurate on Android 11+ without any
+  permission and without exposing data.
+- Sharing still never means paid: the item moves to WAITING_CONFIRMATION and only
+  an explicit user answer can set a result.
+
+## Pre-production risk audit (this session)
+
+Found and fixed, ordered by how much damage the issue could do in production.
+
+1. **Multi-QR screenshots were silently resolved to one code (fixed, high).**
+   `QrImageDecoder` used the first QR ZXing returned. Real screenshots often hold
+   a payment QR next to an unrelated code; picking one could pay the wrong code.
+   Now, after a successful decode, ZXing's `GenericMultipleBarcodeReader` scans
+   the rest of the image: one distinct payload is a normal result, two or more
+   become `QrDecodeResult.Ambiguous` → `MULTIPLE_QR_CODES` → `INVALID`, excluded
+   from the queue with a clear reason. `RGBLuminanceSource`/`GrayscaleLuminanceSource`
+   crop support (required by the multi-reader) and the recursive cost were checked
+   in the ZXing 3.5.4 sources before adopting it.
+2. **A repeated share could pay the same bill twice (fixed, high).**
+   The share button was active on an item that had already been handed off, so
+   two taps meant two shares of the same QR. Now a share request is ignored while
+   one is still in flight, and any item that is not `READY` requires an explicit
+   **Share again** confirmation with a double-payment warning
+   (`ReShareDialog`, `QueueViewModel.onShareQrRequested`).
+3. **An empty share sheet was unexplained (fixed, medium).** Nothing checked
+   whether any app could receive the image, and package visibility on Android 11+
+   would have hidden the answer anyway. Now the app probes the resolver (with
+   `<queries>`), disables sharing when no app can receive an image, offers to open
+   the image instead, and states truthfully whether K PLUS is missing, installed
+   without a share filter, or available.
+4. **A failed queue save was swallowed (fixed, medium).** `saveQueue` now returns
+   a result and the UI reports `QUEUE_NOT_SAVED`, so a payment result is never
+   believed to be recorded when it never reached disk.
+5. **Orphan image copies could accumulate (fixed, low/medium).** Images written
+   by an import that never produced a saved queue are now swept
+   (`sweepOrphanImages`), and an import that finishes after the user cleared the
+   queue is discarded along with the copies it just wrote instead of resurrecting
+   a deleted queue.
+6. **Timestamps were not persisted (fixed, low).** Items now carry
+   `importedAtMillis` and `decidedAtMillis`, and the queue carries
+   `updatedAtMillis` (stamped on every save). This makes "when was this decided?"
+   answerable after a restart.
+7. **MIME fallback for share targets (fixed, medium).** A HEIC/WebP image shared
+   as `image/heic` can be rejected by every receiver; the share is retried as
+   `image/*`.
+8. **`.gitignore` hid the whole Android source tree (fixed in the previous
+   session, still critical).** The unanchored `src/` rule ignored `app/src/`.
+   Patterns are now anchored to the repository root.
+
+Checked and found acceptable, with reasons:
+
+- **Original images**: the app only ever copies. `QueueRepository` writes to
+  `filesDir/qrqueue/`, and clearing a queue deletes only that directory. Nothing
+  in the app can touch a gallery file.
+- **URI permissions after restart**: imports are copied immediately, so no picker
+  grant is needed later. A process killed mid-import leaves a copy that ends up
+  as an orphan, which is swept.
+- **Memory**: decoding uses `inSampleSize` (≤1600 px first pass), the
+  full-resolution retry is skipped above an 8 MP budget, `Bitmap`s are recycled
+  after their pixels are copied, and only the current item's preview (≤1080 px) is
+  held by the UI. Images are processed strictly one at a time.
+- **Queue safety rules**: no transition can reach SUCCESS/PAYMENT_FAILED without
+  WAITING_CONFIRMATION or an explicit UNKNOWN resolution; an interrupted hand-off
+  returns as UNKNOWN; UNKNOWN blocks the queue and is never retried.
+- **Validation**: an item only becomes `READY` when the payload parses as a
+  supported Thai EMVCo QR with a valid CRC; otherwise it lands in a specific error
+  state that stays visible in the review list.
+- **Manifest/permissions**: no runtime permissions; the only exported component is
+  the launcher activity; `FileProvider` is `exported=false` and exposes only
+  `qrqueue/images/`; `allowBackup=false`; no logging of payloads or secrets
+  (the app does not log at all).
+- **Lint**: `abortOnError=false` is deliberate (lint must not be confused with the
+  APK gate, and CI still runs it). Lint currently completes clean as a task.
+
+Not fixed / not fixable here, recorded honestly:
+
+- Lint is not configured to fail the build (`abortOnError=false`).
+- There are no instrumented UI tests and no emulator in CI.
+- K PLUS behaviour cannot be verified from this environment at all.
 
 ## Files added (this session)
 
-- `app/src/main/java/com/enjirad/qrqueue/domain/QrPayload.kt` — payload model
-  (`QrFormat`, `RecipientKind`, `QrPayload`).
-- `app/src/main/java/com/enjirad/qrqueue/domain/EmvCoQrParser.kt` — TLV parser,
-  CRC-16/CCITT-FALSE, mobile/national-ID formatting, AID handling.
-- `app/src/main/java/com/enjirad/qrqueue/domain/QrImageDecoder.kt` — pure-JVM
-  ZXing decode over ARGB pixels (`QrDecodeResult`).
-- `app/src/main/java/com/enjirad/qrqueue/domain/QrValidation.kt` — decode result
-  to `ItemOutcome` mapping, payload key normalisation, duplicate keys.
-- `app/src/main/java/com/enjirad/qrqueue/domain/ValidationIssue.kt` — issues and
-  their status mapping.
-- `app/src/main/java/com/enjirad/qrqueue/domain/QueueImport.kt` — selection
-  de-duplication, storage extension/MIME mapping, item building.
-- `app/src/main/java/com/enjirad/qrqueue/domain/PaymentQueue.kt` — queue model,
-  state machine transitions, aggregates, interruption resolution.
-- `app/src/main/java/com/enjirad/qrqueue/data/QueueRepository.kt` — app-private
-  image copies and JSON queue state (single owner of on-disk state).
-- `app/src/main/java/com/enjirad/qrqueue/data/QrImageFiles.kt` — bitmap loading
-  for decoding and preview.
-- `app/src/main/java/com/enjirad/qrqueue/data/QrShare.kt` — share/view intents
-  for the stored QR image.
-- `app/src/main/res/xml/file_paths.xml` — FileProvider path (only the queue
-  image directory).
-- Tests: `EmvCoQrParserTest`, `QrImageDecoderTest`, `QrValidationTest`,
-  `PaymentQueueTest`, `QueueImportTest`, `AmountParsingTest`.
+- `docs/REAL_DEVICE_TEST.md` — the device test plan, marked
+  **NOT YET VERIFIED ON REAL DEVICE**.
+- `app/src/main/java/com/enjirad/qrqueue/data/ShareTargets.kt` — share target and
+  K PLUS availability resolution (pure `classify`, Android `query`).
+- `app/src/test/java/com/enjirad/qrqueue/data/ShareTargetsTest.kt` — 7 tests.
 
 ## Files changed (this session)
 
-- `gradle/libs.versions.toml` — added pinned `zxing = "3.5.4"` and
-  `zxing-core`.
-- `app/build.gradle.kts` — added the ZXing core dependency; version 0.2.0
-  (versionCode 2).
-- `app/src/main/AndroidManifest.xml` — added the `FileProvider` (exported
-  false, per-use URI grants). Still **no permissions**.
-- `app/src/main/java/com/enjirad/qrqueue/domain/PaymentStatus.kt` — added
-  processable / pending / excluded / paid groupings.
-- `app/src/main/java/com/enjirad/qrqueue/domain/Money.kt` — added strict
-  `parseSatang` for amounts taken from QR payloads.
-- `app/src/main/java/com/enjirad/qrqueue/domain/QueueItem.kt` — added stored
-  image path, MIME type, issue, payload label and raw payload.
-- `app/src/main/java/com/enjirad/qrqueue/ui/QueueViewModel.kt` — import
-  pipeline, persistence, hand-off and confirmation actions.
-- `app/src/main/java/com/enjirad/qrqueue/ui/QueueScreen.kt` — home, review,
-  processing and summary stages plus the photo-picker route.
-- `app/src/main/res/values/strings.xml` — V2 strings (and removal of the V0.1
-  "import planned" copy).
-- `README.md` — V2 workflow, format support, limitations.
-- `app/src/test/java/com/enjirad/qrqueue/domain/PaymentStatusTest.kt` — added
-  queue-grouping assertions.
-
-## Files removed
-
-None. The native project structure, single-activity Compose architecture and the
-`domain`/`ui` split were preserved. `MainActivity` and the theme were not
-touched.
+- `domain/QrImageDecoder.kt` — `Ambiguous` result, multi-QR scan, documented
+  failure behaviour.
+- `domain/ValidationIssue.kt` — `MULTIPLE_QR_CODES`.
+- `domain/QrValidation.kt` — ambiguous images are rejected before parsing.
+- `domain/PaymentQueue.kt` — `updatedAtMillis`, decision timestamps on settle.
+- `domain/QueueItem.kt` — `importedAtMillis`, `decidedAtMillis`.
+- `domain/QueueImport.kt` — `buildItem` records the import time.
+- `data/QueueRepository.kt` — `saveQueue` reports success, `deleteImages`,
+  `sweepOrphanImages`, timestamps persisted.
+- `data/QrShare.kt` — MIME-driven chooser, task behaviour fixed, `content://` +
+  grant unchanged.
+- `ui/QueueViewModel.kt` — share gating and in-flight guard, re-share
+  confirmation, new notices, import/clear race guard, orphan sweep, timestamps.
+- `ui/QueueScreen.kt` — share-sheet status notes, re-share dialog, "open QR image"
+  fallback, new notices.
+- `AndroidManifest.xml` — `<queries>` for share targets and the K PLUS package.
+- `app/build.gradle.kts` — version 0.3.0 (versionCode 3).
+- `res/values/strings.xml` — new strings, version chip.
+- `README.md` — K PLUS share flow, audit-driven behaviour, verification status.
 
 ## Dependencies added
 
-| Dependency | Version | Why |
-| --- | --- | --- |
-| `com.google.zxing:core` | 3.5.4 | Real QR decoding from image pixels. Pure Java, no Android dependency, so the same decode path is unit tested on the JVM. One decoder only — no second QR library. |
-
-No other dependency was added: image loading uses `BitmapFactory`, storage uses
-`Context.filesDir`, state uses `org.json`, and sharing uses
-`androidx.core.content.FileProvider` (already present through `core-ktx`).
+None this session. ZXing core 3.5.4 (added with V2) remains the only third-party
+dependency, and it is used for both single and multi QR decoding.
 
 ## Tests performed
 
-72 test methods (JUnit 4, one `@Test` each), all passing in CI run
-`35430531448` (`./gradlew testDebugUnitTest` → BUILD SUCCESSFUL). They cover the
-pure logic:
+85 JUnit 4 test methods (up from 72), all run in CI with
+`./gradlew testDebugUnitTest`. New this session:
 
-- **Parser** — real EMVCo PromptPay fixtures (dynamic with amount and reference,
-  static without amount, bill payment, national ID, e-Wallet, unsupported AID,
-  wrong CRC, malformed TLV, non-payment text, unsupported currency, missing
-  format indicator, zero/invalid amount, missing recipient). Fixtures were
-  generated with an independent CRC-16/CCITT-FALSE implementation and the
-  standard check value `crc16CcittFalse("123456789") == 0x29B1` is asserted.
-- **Decoder** — a QR is rendered with ZXing's encoder and read back through the
-  app's own `QrImageDecoder`, then parsed end to end; blank images and
-  impossible pixel data are asserted not to decode.
-- **Validation** — unreadable, no-QR, decoder failure, duplicate (including
-  whitespace-normalised payloads) and unsupported payload routing.
-- **Queue state machine** — start at the first payable item and skip excluded
-  ones, refusal to start with nothing payable, hand-off never marking paid,
-  success only from `WAITING_CONFIRMATION`, failure recorded then continue,
-  `UNKNOWN` blocking and requiring resolution, resolution refused for non-unknown
-  items, interrupted hand-off becoming `UNKNOWN`, earlier confirmed results
-  surviving a restart, pointer repair after recreation, amounts → totals,
-  progress fraction, completion only when everything has a result, and
-  human-verified statuses counting as paid.
-- **Import helpers** — duplicate selected URIs, extension/MIME mapping, accepted
-  vs rejected item building, unique ids.
-- **Money** — exact satang parsing/formatting including rejection of malformed
-  amounts.
+- `QrImageDecoderTest` — an image with two different QR codes is reported as
+  `Ambiguous` with both payloads; an image with one QR is not ambiguous.
+- `QrValidationTest` — ambiguous images become `MULTIPLE_QR_CODES` / `INVALID`.
+- `ShareTargetsTest` — declared MIME used when handled, `image/*` fallback, no
+  target at all, distinct target counting, K PLUS as share target / installed but
+  not a share target / not installed.
+- `PaymentQueueTest` — success and failure record the user's decision time; an
+  undecided item has none.
+- `QueueImportTest` — the import timestamp is carried onto the item.
 
-**No local Gradle build was run** — this sandbox has no JDK and no Android SDK
-(confirmed: `java` absent, `ANDROID_HOME` empty). The first real compile, lint
-and APK build for V2 happens in GitHub Actions.
-
-## Build command
-
-```bash
-./gradlew assembleDebug
-```
+**No local Gradle run.** No JDK and no Android SDK exist in this sandbox.
 
 ## Build result
 
-- LOCAL BUILD: **not performed / not possible** (no JDK, no Android SDK here).
-- GITHUB ACTIONS (V2, commit `7dd3ed9`, run `35430531448`): **SUCCESS**, 2m38s.
-  - `./gradlew testDebugUnitTest --stacktrace` → `BUILD SUCCESSFUL in 22s`
-    (72 test methods, 0 failures).
-  - `./gradlew lintDebug --stacktrace` → `BUILD SUCCESSFUL in 28s`.
-  - `./gradlew assembleDebug --stacktrace` → `BUILD SUCCESSFUL in 45s`.
-  - `test -f` / `test -s` on the APK → passed; `ls -lh` → `9.5M`;
-    `unzip -l` shows a real APK (`classes.dex` 18,137,284 bytes and
-    `AndroidManifest.xml`).
-  - Artifact `qr-payment-queue-debug-apk` uploaded, final size 9,482,077 bytes,
-    not expired.
-- Failure history for this session:
-  - Run `35430354194` (first V2 commit) **FAILED** at `testDebugUnitTest`:
-    71 tests completed, 1 failed — `EmvCoQrParserTest > parsesBillPayment`, an
-    `assertTrue(outcome is ParseOutcome.Accepted)`. Root cause: the parser chose
-    the account type from the tag (29 vs 30) while the *fixture* carried the
-    bill-payment AID (`A000000677010112`) under tag 29, so it was rejected as an
-    unsupported application id. Fix: identify the scheme by its AID (tag 30
-    remains the standard placement, tag 29 + bill-payment AID now also works),
-    and correct the fixture to the standard tag 30 payload. Re-run green.
-- Historical context: runs #1 and #2 of the old workflow failed inside
-  `android-actions/setup-android@v3` before Gradle ran; the workflow was
-  rewritten (`ubuntu-24.04`, `setup-android@v4` with explicit packages,
-  `checkout@v5`, `setup-java@v5`) in the previous session.
+- LOCAL BUILD: **not performed / not possible** (no JDK, no Android SDK, no
+  device here).
+- GITHUB ACTIONS for 0.2.0 (commit `7dd3ed9`, run `35430531448`): **SUCCESS** —
+  `testDebugUnitTest` (72 tests), `lintDebug`, `assembleDebug`, APK checks and
+  artifact upload, 2m38s.
+- GITHUB ACTIONS for 0.3.0: **PENDING** for the commit containing this file.
+  Update this line with the run URL and conclusion once observed, then state the
+  test count, APK size and artifact ID here.
+- Earlier failures worth knowing: the old workflow died inside
+  `android-actions/setup-android@v3` before Gradle (fixed by pinning
+  `ubuntu-24.04` + `setup-android@v4` with explicit packages); the first V2 run
+  failed one parser test because a fixture carried the bill-payment AID under tag
+  29 (fixed by identifying the scheme by AID and correcting the fixture).
 
-## APK path
+## APK result
 
-Expected: `app/build/outputs/apk/debug/app-debug.apk`
+Expected path: `app/build/outputs/apk/debug/app-debug.apk`.
 
-## APK verification result
+Last observed build (0.2.0, run `35430531448`): APK exists, non-zero (`9.5M`,
+`classes.dex` + `AndroidManifest.xml` present), uploaded as artifact
+`qr-payment-queue-debug-apk` (9,482,077 bytes, artifact ID `10580268112`). The
+0.3.0 run must be observed and recorded here before this section is treated as
+current.
 
-Verified for commit `7dd3ed9` (run `35430531448`):
+## Real-device verification
 
-- `test -f app/build/outputs/apk/debug/app-debug.apk` → passed (file exists).
-- `test -s app/build/outputs/apk/debug/app-debug.apk` → passed (non-zero).
-- `ls -lh` → `-rw-r--r-- 1 runner runner 9.5M ... app-debug.apk`.
-- `unzip -l` → real APK contents (`classes.dex`, `AndroidManifest.xml`, resources).
-- Uploaded as artifact **`qr-payment-queue-debug-apk`** (9,482,077 bytes,
-  `if-no-files-found: error`), artifact ID `10580268112`.
+**REAL DEVICE VERIFICATION: NOT YET DONE.** No device or emulator was available.
+No claim in this repository says K PLUS accepted, read or paid anything. The plan,
+including what counts as evidence, is in `docs/REAL_DEVICE_TEST.md`; the results
+table there is entirely `NOT RUN` and must stay that way until a human fills it in
+from a real phone.
 
 ## Known limitations
 
-1. **Bank confirmation is manual by design.** The app cannot know whether a bank
-   transaction succeeded; unless an official supported integration exists, the
-   user records every result. This is intentional, not a defect.
-2. Only Thai EMVCo QRs (PromptPay tag 29, bill payment tag 30) are supported. A
-   QR with another country code, currency or AID is rejected as unsupported
-   rather than guessed at.
-3. Duplicate detection compares decoded payload text; two different QR images
-   that encode different payloads for the same debt are treated as two items.
-4. HEIC/HEIF screenshots need Android 8.1+ (API 28) to decode; on API 26–27 such
-   an image is reported as unreadable instead of being guessed.
-5. `RECIPIENT_MISMATCH`, `AMOUNT_MISMATCH`, `ORDER_NOT_FOUND`, `EXPIRED` and
-   `RECONCILED` exist in the status model but nothing sets them in V2 — they
-   belong to a future reconciliation mechanism.
-6. Queue state and images are app-private; uninstalling the app removes them.
+1. **Bank confirmation stays manual.** Without an official supported bank
+   integration the app cannot know whether a transaction completed; the user
+   records every result. This is intentional.
+2. **K PLUS cannot be verified from here** — see above.
+3. **Multi-QR images are rejected, not resolved.** An image holding two different
+   QR codes is refused (safely) rather than guessing; the user must re-screenshot
+   just the payment code.
+4. K PLUS detection relies on the known package name `com.kasikornbank.kplus`. If
+   KBank ships under a different package, the app reports "not found" while the
+   share sheet itself still works normally; only the hint would be wrong.
+5. Only Thai EMVCo QRs (PromptPay tag 29 / bill payment tag 30, AIDs
+   `A000000677010111` / `A000000677010112`) are supported; anything else is
+   rejected as unsupported rather than guessed.
+6. Duplicate detection compares decoded payload text: two different QRs encoding
+   different payloads for the same debt are treated as two items.
+7. HEIC/HEIF screenshots need API 28+; on API 26–27 they are reported as
+   unreadable.
+8. `RECIPIENT_MISMATCH`, `AMOUNT_MISMATCH`, `ORDER_NOT_FOUND`, `EXPIRED` and
+   `RECONCILED` exist in the status model but nothing sets them — they belong to a
+   future reconciliation mechanism.
+9. No instrumented UI tests; there is no emulator in CI.
+10. Lint does not fail the build (`abortOnError=false`).
+11. UI copy is English (with the existing Thai subtitle); a Thai localization of
+    the payment-critical prompts has not been done.
+12. Queue state and images are app-private; uninstalling removes them.
 
 ## Next task
 
-1. Optional/product work only from here: consider V1.0, an optional and
-   explicitly supported reconciliation path (official bank/API integration) that
-   can verify a payment without ever automating the user's banking app.
-2. If a device is available, install the artifact and walk the real flow once
-   (multi-image import → review → start → share → confirm → summary → relaunch
-   mid-queue) and record what was observed. Nothing in this file claims a
-   device run yet — only the CI build and the automated tests are observed.
+1. **Real-device verification first** — nothing below matters more while the K PLUS
+   flow is unproven. Install the artifact, run TEST 1–13 in
+   `docs/REAL_DEVICE_TEST.md`, fill in the tables with what was actually observed,
+   and only then describe the flow as working.
+2. If TEST 2/TEST 3 show that K PLUS cannot accept a shared screenshot, document
+   that finding plainly in `docs/REAL_DEVICE_TEST.md` and the README instead of
+   inventing a workaround; the honest outcome is that the share path depends on
+   KBank's support for it.
+3. Optional: Thai localization of the payment-critical prompts, and a queue
+   history so a finished queue can be reviewed later.
+4. Optional V1.0: an explicitly supported reconciliation mechanism (official bank
+   API) as a separate, verified layer.
 
 ## Important decisions
 
-- One QR library (ZXing core) for one responsibility; no scanner activity and no
-  camera code, because the product imports screenshots.
-- Domain logic stays free of Android imports so the parser, decoder, validation
-  and queue state machine are exercised by real JVM unit tests.
-- The decoder works on ARGB pixels, which makes the exact production decode path
-  testable and keeps the Android layer thin.
+- One QR library (ZXing core) for both single and multi decoding; no second
+  scanner library, no camera code.
+- Domain logic stays free of Android imports, so parser, decoder, validation,
+  queue state machine and share classification are covered by JVM unit tests.
+- The decoder works on ARGB pixels, so the production decode path is testable and
+  the Android layer stays thin.
+- Ambiguity is refused rather than resolved: paying the wrong code is worse than
+  skipping an item.
+- A repeated share of the same QR requires an explicit confirmation.
+- Share targets are described, never forced: Android's resolver picks the app.
+- `<queries>` is used rather than `QUERY_ALL_PACKAGES`, so share detection works
+  on Android 11+ without a blanket package query.
 - Queue state lives in one JSON file plus one image directory; there is no second
-  storage or database, and no parallel queue implementation.
+  storage or database.
 - Persistence happens on every mutation, and an interrupted hand-off becomes
-  `UNKNOWN` rather than a guess.
-- `PaymentQueue` refuses any transition that would mark a payment successful
-  without an explicit confirmation state.
-- The photo picker contract is used with its default item limit so a device with
-  a lower picker limit can never reject the launch.
-- The merchant account scheme is identified by its EMVCo application ID rather
-  than by the tag alone, so a bill-payment block placed under tag 29 is handled
-  while unknown AIDs stay rejected as unsupported.
-- The `.gitignore` web-scaffold patterns are anchored to the repository root:
-  the previous unanchored `src/` rule silently ignored `app/src/`, which would
-  have kept every new Android source file out of a clean checkout.
+  UNKNOWN rather than a guess.
 
 ## Things future agents must NOT repeat
 
-- Do **not** reintroduce any web scaffold (Vite/React/Convex/tsconfig/
-  package.json/bun.lock/integrations.md/`src/`).
-- Do **not** claim a build or APK exists without CI evidence. V2 is verified by
-  run `35430531448` (commit `7dd3ed9`); any later code change needs its own green
-  run before it is described as verified.
-- Do **not** re-add an unanchored `src/` (or other bare tool-folder) ignore rule:
-  it hides `app/src/` from git and breaks a clean checkout.
-- Do **not** revert to folder selection, storage permissions or a device-wide
-  scan: use the photo picker.
-- Do **not** delete or move the user's gallery originals when importing.
-- Do **not** create fake queue items, sample payments, demo QR payloads or
-  placeholder "success" states.
-- Do **not** add bank automation, Accessibility clicking, OTP/PIN handling, bank
-  credential storage, or any "confirm payment" automation. Ever.
+- Do **not** claim K PLUS works, or that any real transaction happened, without
+  real-device evidence recorded in `docs/REAL_DEVICE_TEST.md`. The current status
+  is NOT YET VERIFIED ON REAL DEVICE.
+- Do **not** claim a build or APK exists without CI evidence.
+- Do **not** reintroduce any web scaffold (Vite/React/Convex/package.json/
+  `bun.lock`/root `src/`).
+- Do **not** re-add an unanchored `src/` (or similar bare tool-folder) ignore
+  rule: it hides `app/src/` from git and breaks a clean checkout.
+- Do **not** remove the `<queries>` block: without it share-target detection on
+  Android 11+ silently reports nothing.
+- Do **not** go back to picking one QR out of an image that contains several.
+- Do **not** let a share happen twice on the same item without the explicit
+  confirmation dialog.
 - Do **not** mark a payment `PAID` because a QR was opened, shared or displayed,
-  and do **not** auto-retry an `UNKNOWN` result.
+  and do **not** auto-retry an UNKNOWN result.
+- Do **not** delete or move the user's gallery originals when importing.
+- Do **not** create fake queue items, sample payments, demo QR payloads,
+  placeholder success states, or device test results.
+- Do **not** add bank automation, Accessibility clicking, OTP/PIN handling, bank
+  credential storage, private K PLUS APIs or root requirements. Ever.
 - Do **not** add a second QR library, a second queue store or a second parser.
 - Do **not** commit secrets; never touch `.env*` in git.

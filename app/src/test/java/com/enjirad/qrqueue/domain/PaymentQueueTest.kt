@@ -268,6 +268,32 @@ class PaymentQueueTest {
     }
 
     @Test
+    fun theUsersConfirmationTimeIsRecordedOnTheItem() {
+        val decidedAt = 1_700_000_000_000L
+        val settled = mixedQueue().start().handOffCurrent().confirmSuccess(decidedAt)
+
+        assertEquals(decidedAt, settled.items[0].decidedAtMillis)
+        assertEquals(1, settled.paidCount)
+    }
+
+    @Test
+    fun aFailureDecisionIsRecordedWithItsTimeToo() {
+        val decidedAt = 1_700_000_000_500L
+        val settled = mixedQueue().start().handOffCurrent().confirmFailure(decidedAt)
+
+        assertEquals(decidedAt, settled.items[0].decidedAtMillis)
+        assertEquals(1, settled.failedCount)
+    }
+
+    @Test
+    fun anItemWithoutADecisionHasNoDecisionTime() {
+        val handedOff = mixedQueue().start().handOffCurrent()
+
+        assertNull(handedOff.items[0].decidedAtMillis)
+        assertEquals(0, handedOff.paidCount)
+    }
+
+    @Test
     fun humanVerifiedStatusesCountAsPaidAmounts() {
         val queue = PaymentQueue.create(
             queueId = "queue-1",

@@ -4,7 +4,7 @@
     <string name="screen_title">QR Payment Queue</string>
     <string name="screen_subtitle">จัดการคิวชำระเงินจาก QR Code อย่างเป็นระบบ</string>
     <string name="screen_description">Import several QR screenshots at once. Each image is decoded and validated, then the app walks you through them one at a time and you confirm every real payment yourself in your own banking app.</string>
-    <string name="version_chip">v0.2.0 · multi-image import queue</string>
+    <string name="version_chip">v0.3.0 · K PLUS share queue</string>
 
     <string name="stat_in_queue">QR in queue</string>
     <string name="stat_total_amount">Queue total</string>
@@ -17,6 +17,7 @@
     <string name="action_cancel">Cancel</string>
     <string name="action_clear_queue">Clear queue</string>
     <string name="action_share_qr">Open / Share QR</string>
+    <string name="action_view_qr">Open QR image in another app</string>
     <string name="action_already_paid">I already paid this one in my banking app</string>
     <string name="action_confirm_success">Payment successful</string>
     <string name="action_confirm_failure">Payment failed</string>
@@ -81,10 +82,21 @@
     <string name="import_progress_text">%1$d of %2$d</string>
     <string name="import_progress_hint">Copying, decoding and validating each selected image.</string>
 
+    <string name="share_no_target_note">No app on this device can receive a shared QR image, so sharing is disabled for this item. Install K PLUS or another banking app that accepts images.</string>
+    <string name="share_kplus_not_installed_note">K PLUS was not found on this device, so it will not appear in the share sheet. You can still share this QR to another banking app, or install K PLUS.</string>
+    <string name="share_kplus_not_share_target_note">K PLUS is installed but does not appear as a QR image share target, so Android may not list it in the share sheet. You can still open K PLUS and use its own QR feature.</string>
+
+    <string name="reshare_dialog_title">Share this QR again?</string>
+    <string name="reshare_dialog_body">This QR was already handed to your banking app. Sharing it again could lead to paying the same bill twice. Continue only if you are sure the first attempt did not go through.</string>
+    <string name="reshare_dialog_confirm">Share again</string>
+
     <string name="notice_images_not_imported">Some selected images could not be copied into the app. They are listed as unreadable.</string>
     <string name="notice_queue_running">Finish or clear the current queue before importing more images.</string>
     <string name="notice_nothing_to_pay">No payable QR codes in this queue, so it can not start.</string>
-    <string name="notice_share_failed">No app could be opened for this QR. You can still pay it in your banking app and record the result here.</string>
+    <string name="notice_share_failed">The QR could not be shared. Nothing was recorded as paid; you can still pay it in your banking app and record the result here.</string>
+    <string name="notice_share_target_unavailable">No app on this device can receive a shared QR image. Install K PLUS or another banking app that accepts images. Nothing was recorded as paid.</string>
+    <string name="notice_view_target_unavailable">No app on this device could open the QR image.</string>
+    <string name="notice_queue_not_saved">This change could not be saved to this device. Check free storage space; your last change may not survive a restart.</string>
     <string name="notice_queue_cleared">Queue cleared.</string>
 
     <string name="safety_title">You stay in control of every payment</string>

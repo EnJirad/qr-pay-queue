@@ -29,6 +29,7 @@ The app prepares, organizes and tracks payment tasks. It never performs a paymen
 | Architecture | Single activity, AndroidX, ViewModel + StateFlow, domain/UI separation |
 | Build | Gradle (Kotlin DSL), Android Gradle Plugin 8.7.3 |
 | Package | `com.enjirad.qrqueue` |
+| App version | 0.3.0 |
 | QR decoding | ZXing core 3.5.4 (pure Java, pinned in `gradle/libs.versions.toml`) |
 | Persistence | App-private JSON state file + copied images in `filesDir/qrqueue/` |
 | CI | GitHub Actions (`testDebugUnitTest`, `lintDebug`, `assembleDebug`, APK artifact) |
@@ -73,10 +74,12 @@ Invalid and duplicate images stay visible with their reason and are excluded fro
 
 ### 4. Work through it one QR at a time
 
-For the current item the screen shows the amount, recipient, reference, QR format and the QR image itself, plus:
+For the current item the screen shows the queue position, the recipient, the amount, the reference, the QR format and the QR image itself, plus:
 
-- **Open / Share QR** — hands the stored QR image to the app you pick (typically your banking app) through a normal Android share intent. If you already paid it outside the app, use **I already paid this one in my banking app** instead.
+- **Open / Share QR** — opens Android's share sheet with the stored QR image (see [K PLUS and the Android share sheet](#k-plus-and-the-android-share-sheet)). If you already paid it outside the app, use **I already paid this one in my banking app** instead.
 - Then the app asks: *Have you completed this payment?* with **Payment successful**, **Payment failed** and **Something went wrong**.
+
+Sharing an item that was already handed off does not happen silently: the app first warns that sharing the same QR twice could pay the same bill twice and asks for an explicit **Share again**.
 
 Only your explicit answer moves an item forward. Sharing, opening or displaying a QR never marks it paid. **Something went wrong** marks the result `UNKNOWN`: the queue stops there and waits for you to check your banking app and record what really happened — it is never retried automatically.
 
@@ -113,6 +116,7 @@ qr-queue-app/
 │       └── test/java/com/enjirad/qrqueue/domain/
 ├── gradle/libs.versions.toml                 (pinned, compatible tool versions)
 ├── .github/workflows/android.yml             (tests + lint + APK verification + artifact)
+├── docs/REAL_DEVICE_TEST.md                  (K PLUS device test plan and status)
 ├── AI_RULES.md
 └── AI_HANDOFF.md
 ```
@@ -145,6 +149,44 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 `.github/workflows/android.yml` runs on every push, pull request and manual dispatch: unit tests, lint, `assembleDebug`, APK existence and non-zero-size checks, APK inspection, then upload as the artifact **`qr-payment-queue-debug-apk`** with `if-no-files-found: error`.
 
+## K PLUS and the Android share sheet
+
+The hand-off uses nothing but standard Android mechanisms:
+
+```
+QR image (app-private copy)
+        ↓
+FileProvider  →  content:// URI  +  FLAG_GRANT_READ_URI_PERMISSION
+        ↓
+Intent.ACTION_SEND with EXTRA_STREAM and type image/*
+        ↓
+Android share sheet (the resolver picks the target — no package is forced)
+        ↓
+K PLUS
+        ↓
+K PLUS reads the QR, shows the payment details
+        ↓
+USER authenticates (PIN / biometric) and confirms in K PLUS
+        ↓
+Back in QR Payment Queue the user records the result
+        ↓
+Next QR
+```
+
+What the app does to make that reliable:
+
+- The image is shared as a `content://` URI through `FileProvider` with a temporary read grant — never `file://`, which banking apps cannot read.
+- The MIME type is the real type of the stored image (for example `image/png`); if no app on the device handles that exact type, the share is retried as `image/*`.
+- The share sheet is the Android resolver's, so K PLUS appears exactly when it advertises itself as a share target. The app never launches a bank app by package name and never operates it.
+- If no app can receive an image at all, sharing is disabled and explained instead of failing silently.
+- If K PLUS is not found on the device, or is installed but does not appear as a QR image share target, the processing screen says so in plain language, so an empty share sheet is never a mystery. (Results on Android 11+ rely on the small `<queries>` block in the manifest; it grants no permissions.)
+- Sharing hands the item to *waiting for confirmation*. Repeating a share requires an explicit confirmation, which prevents an accidental second payment.
+
+What the app deliberately does **not** do: enter a PIN, password or OTP, read them,
+touch biometric prompts, click anything inside K PLUS, use Accessibility to operate
+the bank app, scrape bank screens, call bank APIs, or mark a payment as paid because
+a share succeeded.
+
 ## Security and payment safety model
 
 - The app never stores or types bank PINs, passwords, OTPs, card PINs or biometric credentials.
@@ -152,7 +194,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Payment confirmation always happens in your own banking app, and the app always asks you for the result.
 - A payment is never marked `PAID` just because a QR was opened, shared or handed over — only your explicit confirmation sets a result.
 - An `UNKNOWN` result blocks the queue and is never retried automatically.
+- An item that was already handed off is not shared again without an explicit confirmation, so a repeated tap cannot cause a double payment.
+- If the queue cannot be written to disk, the app says so instead of pretending the result was recorded.
+- Image copies that belong to no queue item (for example after an interrupted import) are cleaned up; gallery originals are never touched.
+- Nothing sensitive is logged: the app does not log payloads, credentials or payment data, and backs up nothing (`allowBackup=false`).
 - Importing uses Android's photo picker and the app's own private storage; no runtime permissions and no broad storage access are requested.
+- The only exported component is the launcher activity; the `FileProvider` is `exported=false` and only shares the app's own queue image directory, per use.
 
 ### Banking confirmation limitation
 
@@ -172,6 +219,11 @@ Error states: `INVALID`, `RECIPIENT_MISMATCH`, `AMOUNT_MISMATCH`, `ORDER_NOT_FOU
 
 Validation issues: `UNREADABLE_IMAGE`, `QR_NOT_FOUND`, `MALFORMED_PAYLOAD`, `CRC_MISMATCH`, `UNSUPPORTED_PAYLOAD`, `MISSING_PAYMENT_INFO`, `DUPLICATE_PAYLOAD`
 
+## Verification status
+
+- Build, unit tests, lint and the APK are verified in GitHub Actions on every push (see the CI section below).
+- K PLUS behaviour is **NOT YET VERIFIED ON A REAL DEVICE**. The share mechanism follows Android's documented image-sharing path and KBank's documented QR-image sharing flow, but nothing in this repository claims a real K PLUS transaction has been observed through it. The test plan and the current status live in [`docs/REAL_DEVICE_TEST.md`](docs/REAL_DEVICE_TEST.md).
+
 ## Supported QR format
 
 Thai EMVCo merchant-presented QR payloads:
@@ -183,6 +235,8 @@ Thai EMVCo merchant-presented QR payloads:
 
 A QR without an amount (static PromptPay) is valid and stays without an amount: the app shows no invented figure and your banking app decides what to pay.
 
+An image containing **more than one distinct QR code** is rejected as ambiguous (`This image contains more than one QR code`) instead of guessing which code was meant — screenshots often contain a payment QR next to an unrelated one, and paying the wrong code is worse than skipping it.
+
 ## Roadmap
 
 | Version | Scope | Status |
@@ -192,4 +246,6 @@ A QR without an amount (static PromptPay) is valid and stays without an amount: 
 | V0.3 | Real QR decoding (ZXing) + EMVCo PromptPay parsing | delivered in source |
 | V0.4 | Validation, duplicate detection, queue review | delivered in source |
 | V0.5 | Sequential queue, share hand-off, explicit confirmation, persistence, summary | delivered in source |
+| V0.6 (0.3.0) | Pre-production audit: multi-QR ambiguity rejection, double-share protection, share-target reporting, orphan-image cleanup, save-failure reporting, timestamps | delivered in source |
 | V1.0 | Optional verified reconciliation with an official bank/API integration | planned |
+| — | Real-device verification of the K PLUS share flow | not yet done — tracked in `docs/REAL_DEVICE_TEST.md` |
