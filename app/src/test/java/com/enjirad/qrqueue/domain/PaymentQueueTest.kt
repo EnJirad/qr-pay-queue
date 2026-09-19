@@ -400,4 +400,86 @@ class PaymentQueueTest {
         assertNull(queue.nextActionItem)
         assertEquals("a", queue.awaitingAnswerItem?.id)
     }
+
+
+    // ---- retryShare (V0.7 §11–§15) ----
+
+    @Test
+    fun `retryShare moves AWAITING to SHARING with same QR`() {
+        val item = TestFixtures.readyItem("a", 0)
+        val q = PaymentQueue.create("q", 100, listOf(item))
+            .startSharing("a", 200)
+            .shareLaunched("a", 300)
+        assertEquals(PaymentStatus.AWAITING_USER_CONFIRMATION, q.item("a")!!.status)
+        val retried = q.retryShare("a", 400)
+        assertEquals(PaymentStatus.SHARING, retried.item("a")!!.status)
+        assertEquals(item.currentVersionId, retried.item("a")!!.currentVersionId)
+    }
+
+    @Test
+    fun `retryShare creates new PaymentAttempt`() {
+        val item = TestFixtures.readyItem("a", 0)
+        val q = PaymentQueue.create("q", 100, listOf(item))
+            .startSharing("a", 200)
+            .shareLaunched("a", 300)
+        val before = q.item("a")!!.attempts.size
+        val retried = q.retryShare("a", 400)
+        assertEquals(before + 1, retried.item("a")!!.attempts.size)
+    }
+
+    @Test
+    fun `retryShare does not create new PaymentItem`() {
+        val item = TestFixtures.readyItem("a", 0)
+        val q = PaymentQueue.create("q", 100, listOf(item))
+            .startSharing("a", 200)
+            .shareLaunched("a", 300)
+        val retried = q.retryShare("a", 400)
+        assertEquals(1, retried.itemCount)
+        assertEquals("a", retried.items[0].id)
+    }
+
+    @Test
+    fun `retryShare does not create new QR Version`() {
+        val item = TestFixtures.readyItem("a", 0)
+        val q = PaymentQueue.create("q", 100, listOf(item))
+            .startSharing("a", 200)
+            .shareLaunched("a", 300)
+        val versionCount = q.item("a")!!.versions.size
+        val retried = q.retryShare("a", 400)
+        assertEquals(versionCount, retried.item("a")!!.versions.size)
+    }
+
+    @Test
+    fun `retryShare is no-op for READY item`() {
+        val item = TestFixtures.readyItem("a", 0)
+        val q = PaymentQueue.create("q", 100, listOf(item))
+        val result = q.retryShare("a", 200)
+        assertEquals(PaymentStatus.READY, result.item("a")!!.status)
+    }
+
+    @Test
+    fun `retryShare is no-op for COMPLETED item`() {
+        val item = TestFixtures.readyItem("a", 0)
+        val q = PaymentQueue.create("q", 100, listOf(item))
+            .startSharing("a", 200)
+            .shareLaunched("a", 300)
+            .confirmCompleted("a", 400)
+        assertEquals(PaymentStatus.COMPLETED, q.item("a")!!.status)
+        val result = q.retryShare("a", 500)
+        assertEquals(PaymentStatus.COMPLETED, result.item("a")!!.status)
+    }
+
+    @Test
+    fun `multiple retries create separate attempts`() {
+        val item = TestFixtures.readyItem("a", 0)
+        var q = PaymentQueue.create("q", 100, listOf(item))
+            .startSharing("a", 200)
+            .shareLaunched("a", 300)
+        q = q.retryShare("a", 400)  // attempt 2
+        q = q.shareLaunched("a", 500)
+        q = q.retryShare("a", 600)  // attempt 3
+        q = q.shareLaunched("a", 700)
+        // 3 attempts: initial STARTED, initial LAUNCHED, retry STARTED, retry LAUNCHED
+        assertTrue(q.item("a")!!.attempts.size >= 3)
+    }
 }

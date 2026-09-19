@@ -4,7 +4,7 @@
     <string name="screen_title">QR Payment Queue</string>
     <string name="screen_subtitle">เลือกธนาคาร จัดคิวภาพ QR ส่งให้ธนาคารที่เลือกทีละรูป</string>
     <string name="screen_description">เลือกธนาคารสำหรับชำระเงินก่อน แล้วเลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
-    <string name="version_chip">v0.7.0 · fixed-position control panel</string>
+    <string name="version_chip">v0.8.0 · 4-action one-handed payment flow</string>
 
     <!-- tabs -->
     <string name="tab_home">หน้าแรก</string>
@@ -66,6 +66,7 @@
     <string name="action_pay_short">ชำระเงิน</string>
     <string name="action_view_image">ดูรูป</string>
     <string name="action_retry">ลองอีกครั้ง</string>
+    <string name="action_retry_share">ลองสแกนอีกครั้ง</string>
     <string name="action_confirm_completed">ทำรายการเสร็จแล้ว</string>
     <string name="action_keep_waiting">ยังไม่แน่ใจ</string>
     <string name="action_mark_qr_unusable">QR ใช้งานไม่ได้</string>

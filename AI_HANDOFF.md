@@ -16,7 +16,7 @@ private bank API, no QR decoder, no automatic payment confirmation.
 
 ## Current version
 
-**0.7.0 (versionCode 9)** — fixed-position control panel, icon-only ActionRail,
+**0.8.0 (versionCode 10)** — fixed-position control panel, 4-action one-handed payment flow,
 QR preview opposite action side, screen lock, one-tap problem flow (no reason
 sheet), segmented hand selector in settings, lazy daily reset.
 
@@ -177,8 +177,8 @@ says so. Settings and the selected bank survive. Manual reset is the same
 deletion from the settings dialog. Nothing resets while the app is running, and
 nothing is deleted without the date actually changing.
 
-## Files changed (this change)
-## V0.7 changes (fixed-position control panel, icon-only ActionRail)
+## Files changed (V0.6 change)
+## V0.7/V0.8 changes (fixed-position control panel, 4-action one-handed payment flow)
 
 The V0.7 redesign makes the Home tab a fixed control panel: QR preview on one
 side, icon-only action buttons on the other, with the layout mirroring for

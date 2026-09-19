@@ -129,6 +129,7 @@ data class QueueCallbacks(
     val onManualDailyResetRequested: () -> Unit,
     val onReportProblem: (String) -> Unit,
     val onMarkUnknown: (String) -> Unit,
+    val onRetryShare: (String) -> Unit,
     val onLockToggled: () -> Unit,
     val onClearItem: (String) -> Unit,
     val onClearItemConfirmed: () -> Unit,
@@ -208,6 +209,7 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
             onManualDailyResetRequested = viewModel::onManualDailyResetRequested,
             onReportProblem = viewModel::onReportProblem,
             onMarkUnknown = viewModel::onMarkUnknown,
+            onRetryShare = viewModel::onRetryShare,
             onLockToggled = viewModel::onLockToggled,
             onClearItem = viewModel::onClearItemRequested,
             onClearItemConfirmed = viewModel::onClearItemConfirmed,
@@ -1108,6 +1110,9 @@ private fun ActionRail(
     ) {
         when {
             isReady -> {
+                // V0.7 §4: single scan icon to send QR to the selected bank.
+                // Using Share icon with QR content description since qr_code_scanner
+                // is not available in material-icons-core.
                 IconButton(
                     onClick = { callbacks.onShareItem(item.id) },
                     modifier = Modifier
@@ -1123,25 +1128,35 @@ private fun ActionRail(
                 }
             }
             isAwaiting -> {
+                // V0.7 §5–§6: four action icons in fixed order.
+                // §18/§20: order is always ✓, ⚠, ?, ↻ — muscle memory.
                 ActionIconButton(
                     onClick = { callbacks.onConfirmCompleted(item.id) },
                     icon = Icons.Outlined.CheckCircle,
                     contentDescription = stringResource(R.string.action_confirm_completed),
                     tint = MaterialTheme.colorScheme.primary,
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
                 ActionIconButton(
                     onClick = { callbacks.onReportProblem(item.id) },
                     icon = Icons.Outlined.Warning,
                     contentDescription = stringResource(R.string.action_report_problem),
                     tint = MaterialTheme.colorScheme.error,
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
                 ActionIconButton(
                     onClick = { callbacks.onMarkUnknown(item.id) },
                     icon = Icons.Outlined.Info,
                     contentDescription = stringResource(R.string.action_unknown),
                     tint = MaterialTheme.colorScheme.tertiary,
+                )
+                Spacer(Modifier.height(12.dp))
+                // §11–§15: retry — re-shares the same QR to the bank.
+                ActionIconButton(
+                    onClick = { callbacks.onRetryShare(item.id) },
+                    icon = Icons.Outlined.Refresh,
+                    contentDescription = stringResource(R.string.action_retry_share),
+                    tint = MaterialTheme.colorScheme.secondary,
                 )
             }
             isProblem -> {
@@ -2216,6 +2231,7 @@ private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onManualDailyResetRequested = {},
     onReportProblem = {},
     onMarkUnknown = {},
+    onRetryShare = {},
     onLockToggled = {},
     onClearItem = {},
     onClearItemConfirmed = {},

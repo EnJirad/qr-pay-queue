@@ -275,6 +275,33 @@ data class PaymentQueue(
     )
 
     /**
+     * Retry-share (§11–§14): the user is in [PaymentStatus.AWAITING_USER_CONFIRMATION]
+     * and wants to open the bank app again with the same QR — e.g. they opened the
+     * bank but did not pay. The item goes back to [PaymentStatus.SHARING] with a
+     * new [PaymentAttempt] (for audit trail), and the same QR version is used.
+     * No new Payment Item and no new QR Version are created.
+     */
+    fun retryShare(itemId: String, nowMillis: Long = 0L): PaymentQueue {
+        val index = items.indexOfFirst { item -> item.id == itemId }
+        val item = items.getOrNull(index) ?: return this
+        if (item.status != PaymentStatus.AWAITING_USER_CONFIRMATION) return this
+        val version = item.currentVersion ?: return this
+        val attempt = paymentAttempt(item, version, PaymentAttemptResult.STARTED, null, nowMillis)
+        return copy(
+            items = items.replacingAt(
+                index,
+                item.copy(
+                    status = PaymentStatus.SHARING,
+                    failureDetail = null,
+                    lastAttemptAt = nowMillis,
+                    updatedAt = nowMillis,
+                    attempts = item.attempts + attempt,
+                ),
+            ),
+        )
+    }
+
+    /**
      * Replaces the current QR of an item with a new image, keeping the Payment
      * Item (its id, position and number) unchanged.
      *

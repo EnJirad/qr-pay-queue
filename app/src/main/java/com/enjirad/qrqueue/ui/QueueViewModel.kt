@@ -653,6 +653,28 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         persist(queue.markUnknown(itemId, null, System.currentTimeMillis()))
     }
 
+    /**
+     * Retry-share (§11–§15): the user is in AWAITING_USER_CONFIRMATION and wants
+     * to open the bank again with the same QR. The item goes back to SHARING with
+     * a new attempt record, and the bank share flow is re-triggered.
+     */
+    fun onRetryShare(itemId: String) {
+        if (_uiState.value.paymentInFlight) {
+            _uiState.update { it.copy(notice = QueueNotice.HANDOFF_IN_PROGRESS) }
+            return
+        }
+        val queue = _uiState.value.queue ?: return
+        val item = queue.item(itemId) ?: return
+        if (item.status != PaymentStatus.AWAITING_USER_CONFIRMATION) return
+        val bank = _uiState.value.selectedBank ?: return
+        val nowMillis = System.currentTimeMillis()
+        val updated = queue.retryShare(itemId, nowMillis)
+        if (updated.item(itemId)?.status != PaymentStatus.SHARING) return
+        persist(updated)
+        // Re-trigger the bank share with the same QR.
+        beginHandOff(item, bank)
+    }
+
     // ---- clear item ---------------------------------------------------------
 
     fun onClearItemRequested(itemId: String) {
