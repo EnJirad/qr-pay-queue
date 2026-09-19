@@ -1,57 +1,60 @@
-# Real-device test report — V0.4.2 bank selection and upload gate
+# Real-device test report — V0.5.0 tabs, state machine, replace QR
 
 ## Status
 
-> **REAL DEVICE VERIFICATION: NOT YET DONE**
+> **REAL DEVICE VERIFICATION: NOT VERIFIED**
 >
 > No Android device and no emulator were available in the environment where this
-> change was written. CI only compiles, unit-tests, lints and packages the APK.
-> Therefore **no bank selection, share flow or K PLUS behaviour is claimed anywhere
-> in this repository**.
+> change was written. CI only compiles, unit-tests, lints and packages the APK, so
+> **no screen of this app has ever been rendered outside a build**, and no bank
+> hand-off has been observed. Nothing in this repository claims otherwise.
 
-## Bank expansion checklist (Xiaomi 15T Pro / Android 16)
+## Required checklist (Xiaomi 15T Pro / Android 16) — 20 steps
 
-The 16 required checks for the expanded bank support. None has been run.
+None of these has been run.
 
 | # | Step | Expected | Status |
 | --- | --- | --- | --- |
-| 1 | Open the app | Bank card shows "ยังไม่ได้เลือกธนาคาร", import disabled | NOT RUN |
-| 2 | Select K PLUS | Card shows K PLUS + publisher, import enabled | NOT RUN |
-| 3 | Close and reopen the app | — | NOT RUN |
-| 4 | Check the bank | K PLUS still selected | NOT RUN |
-| 5 | Add a QR image | Import succeeds | NOT RUN |
-| 6 | Tap "แชร์ไปธนาคาร" | — | NOT RUN |
-| 7 | Check the app that opened | K PLUS opens directly | NOT RUN |
-| 8 | Look for the Android Sharesheet | **No chooser appears** | NOT RUN |
-| 9 | Check K PLUS received the image | QR image is present in K PLUS | NOT RUN |
-| 10 | Return to Queue App | — | NOT RUN |
-| 11 | Check payment state | **Not auto-completed** (WAITING_USER) | NOT RUN |
-| 12 | Tap "ทำรายการเสร็จแล้ว" | Item becomes COMPLETED | NOT RUN |
-| 13 | Check the queue advanced | Next QR is selectable | NOT RUN |
-| 14 | Change the bank | New bank persists across restart | NOT RUN |
-| 15 | Select an uninstalled bank | Shown as not installed; import disabled | NOT RUN |
-| 16 | Installed bank that does not advertise image share | Status says installed / not share-capable; **not** "not installed" | NOT RUN |
+| 1 | Open the app | Bank card shows "ยังไม่ได้เลือกธนาคาร"; **+ เพิ่ม QR** disabled; tab หน้าแรก selected; no problem badge | NOT RUN |
+| 2 | Select a bank (e.g. K PLUS) | Card shows the bank + publisher; **+ เพิ่ม QR** enabled | NOT RUN |
+| 3 | Add multiple QR images | Photo picker; progress 1/5 … 5/5; auto-returns to หน้าแรก; items numbered QR #01… | NOT RUN |
+| 4 | Verify queue ordering | Items keep the selection order and their numbers; the next action is the first item | NOT RUN |
+| 5 | Verify หน้าแรก | Shows the next action (pay / check / replace QR), the remaining count and **+ เพิ่ม QR** | NOT RUN |
+| 6 | Verify the ปัญหา badge | No badge while nothing needs attention; a count appears as soon as one item does | NOT RUN |
+| 7 | Pay one item | Tap **ชำระเงิน** → item shows SHARING briefly, then awaits confirmation | NOT RUN |
+| 8 | Verify the direct bank launch | The selected bank opens **directly** — **no Android Sharesheet** | NOT RUN |
+| 9 | Return without confirming | Item is **not** completed; หน้าแรก asks you to check and confirm | NOT RUN |
+| 10 | Verify it is not auto-completed | Item still in หน้าแรก/ปัญหา, not in ชำระแล้ว | NOT RUN |
+| 11 | Mark it completed manually | **ทำรายการเสร็จแล้ว** → item appears under ชำระแล้ว with its time | NOT RUN |
+| 12 | Verify ชำระแล้ว | Only user-confirmed items; active items do not appear | NOT RUN |
+| 13 | Trigger the unusable-QR workflow | **QR ใช้งานไม่ได้** → item moves to ปัญหา as ต้องเปลี่ยน QR; item is **not** deleted; badge +1 | NOT RUN |
+| 14 | Replace the QR | **เปลี่ยน QR** → picker opens for one image → same Payment Item, now QR v2 | NOT RUN |
+| 15 | Verify the same Payment Item remains | Same number (`QR #08`) and position; no new item was created | NOT RUN |
+| 16 | Verify the old QR is history | Card shows "QR เวอร์ชันที่ 2"; v1 is no longer current; ใช้ไม่ได้ | NOT RUN |
+| 17 | Verify the new QR is READY | Item is back in หน้าแรก as รอชำระ and can be paid again | NOT RUN |
+| 18 | Restart the app | Queue, statuses, QR versions, completed items and the selected bank all survive | NOT RUN |
+| 19 | Verify UNKNOWN recovery | Kill the app mid hand-off → item returns as ยังไม่ทราบผล, queue pauses, **nothing is re-sent** | NOT RUN |
+| 20 | Rapid payment taps | Hammering **ชำระเงิน** starts exactly one attempt and opens the bank once | NOT RUN |
 
 ## Verified so far (no device required)
 
 | Claim | Evidence |
 | --- | --- |
-| APK builds | GitHub Actions run `35450053027` (commit `ccd9c96`): `assembleDebug` PASS, APK 9.2M |
-| Unit tests pass | same run: `testDebugUnitTest` PASS (incl. registry tests, DirectBankIntentTest, SelectedBankPersistenceTest, UninstalledBankTest, ShareFallbackTest) |
+| APK builds | GitHub Actions run `35451443398` (commit `ec84fdd`): `assembleDebug` PASS, APK 9.3M |
+| Unit tests pass | same run: `testDebugUnitTest` PASS (163 test methods) |
 | Lint passes | same run: `lintDebug` PASS (`abortOnError = true`) |
-| Upload gate works without device | `UploadGateTest` (6 methods): disabled when no bank, enabled when installed, disabled when uninstalled |
-| Bank classification is correct | `BankTargetTest` (9 methods): READY / INSTALLED_NOT_ADVERTISED / NOT_INSTALLED, registry lookups |
-| Share contract has targetPackage | `ShareIntentSpecTest` (8 methods): action SEND, content URI, image MIME, read grant, target package for each bank, no chooser |
-| Queue state machine rules | `PaymentQueueTest`, `PaymentStatusTest` |
-| Import, persistence, completion | `QueueImportTest`, `ImportCompletionTest` |
-| Bank registry has real package names | `BankTargetTest.eachKnownBankHasAValidPackageName` |
-| Direct bank intent contract | `DirectBankIntentTest` (7 methods): ACTION_SEND, image MIME, EXTRA_STREAM content URI, read grant, setPackage target per bank, no chooser |
-| Bank selection survives restart | `SelectedBankPersistenceTest` (7 methods) |
-| Uninstalled bank disables upload | `UninstalledBankTest` (5 methods): isInstalled=false, canUpload=false, requiresBankSelection=true |
-| No Sharesheet fallback | `ShareFallbackTest` (6 methods): every non-ready outcome is an error notice; the action is never a chooser |
-| Bank registry hygiene | `BankTargetTest`: unique ids/packages, valid package format, verified ⇒ Google Play URL + ISO date, 13 expected banks |
-| K PLUS package corrected | `BankTargetTest.kPlusUsesTheCurrentGooglePlayPackage`: `com.kasikorn.retail.mbanking.wap`, old id absent |
-| Unknown probe ≠ not installed | `BankTargetTest.anUnknownProbeIsNotTreatedAsInstalled` |
+| State machine (all valid/invalid transitions) | `PaymentQueueTest` (25 methods) |
+| Only user confirmation completes an item | `PaymentConfirmationTest` (10 methods) |
+| Double-payment protection | `DoublePaymentTest` (8 methods): one attempt per tap burst, one hand-off at a time |
+| Replace QR keeps the Payment Item | `QrReplacementTest` (11 methods): same id/position, v2 current, v1 history, READY, failed replacement leaves the original intact |
+| Badge / tab contents | `NavigationBadgeTest` (14 methods): counts, no "0" badge, problem and completed tab contents, tab order |
+| Import de-duplication and summary | `QueueImportTest`, `ImportCompletionTest` (duplicates counted separately from failures) |
+| Persistence incl. legacy queues | `QueueRepository` schema 3 with migration; selected bank: `SelectedBankPersistenceTest` (7 methods) |
+| Direct bank intent contract | `DirectBankIntentTest` (8), `ShareIntentSpecTest` (8): ACTION_SEND, image MIME, EXTRA_STREAM content URI, read grant, `setPackage` per bank, **no chooser** |
+| Upload gate / uninstalled bank | `UploadGateTest` (7), `UninstalledBankTest` (5) |
+| No Sharesheet fallback | `ShareFallbackTest` (6): every non-ready outcome is an error notice |
+| Bank registry hygiene | `BankTargetTest` (14): unique ids/packages, valid format, verified ⇒ Play URL + ISO date, 13 expected banks, K PLUS is `com.kasikorn.retail.mbanking.wap` |
+| UI layer is only compile-verified | The three tabs, badge, replace-QR picker and confirm panel are Compose code that CI compiles; **no screen has been observed** |
 
 ## Test environment (fill in when a device is available)
 
@@ -59,10 +62,10 @@ The 16 required checks for the expanded bank support. None has been run.
 | --- | --- |
 | Device model | Xiaomi 15T Pro (target) |
 | Android version | Android 16 (target) |
-| K PLUS version | _to be filled in_ |
-| App version | 0.4.2 (versionCode 6) |
+| Bank app versions | _to be filled in_ |
+| App version | 0.5.0 (versionCode 7) |
 | Build under test | commit hash of the tested build |
-| APK source | GitHub Actions artifact `qr-payment-queue-v0.4.2-debug` |
+| APK source | GitHub Actions artifact `qr-payment-queue-v0.5.0-debug` |
 | Test date | _to be filled in_ |
 | Tester | _to be filled in_ |
 
@@ -73,136 +76,108 @@ adb install -r app-debug.apk
 
 ## Test cases
 
-### TEST 1 — first install: no bank, upload disabled
+### TEST 1 — first launch: no bank, upload disabled
 
-1. Install fresh (clear app data if needed).
-2. Open the app.
-
-Expected:
-- The bank section shows "ยังไม่ได้เลือกธนาคาร" with "กรุณาเลือกธนาคารก่อนเพิ่มรูป QR".
-- The [เลือกธนาคาร] button is enabled.
-- The [+ เพิ่มรูป QR] button is **disabled**.
-- The hint below the import button says "กรุณาเลือกธนาคารก่อน จึงจะเพิ่มรูป QR ได้".
-
+Expected: bank card shows "ยังไม่ได้เลือกธนาคาร" + "กรุณาเลือกธนาคารก่อนเพิ่มรูป QR";
+**[เลือกธนาคาร]** enabled; **[+ เพิ่ม QR]** disabled with the disabled hint.
 Status: `NOT RUN`
 
-### TEST 2 — bank selection dialog shows real device state
+### TEST 2 — bank dialog shows real device state
 
-1. Tap [เลือกธนาคาร].
-
-Expected: the dialog lists K PLUS, SCB EASY, Krungthai NEXT, and Bualuang
-mBanking. For each:
-- Installed + advertises image sharing → "พร้อมใช้งาน" (enabled radio).
-- Installed but no image share activity → "ไม่รองรับการส่งรูป" (enabled radio, red note).
-- Not installed → "ไม่ได้ติดตั้ง" (greyed out, disabled radio).
-
+Expected: each known bank shows ติดตั้งแล้ว · ส่งรูป QR ได้ / ติดตั้งแล้ว แต่ไม่พบกิจกรรมที่รับรูป QR /
+ไม่ได้ติดตั้ง / ไม่สามารถตรวจสอบได้. A not-installed bank is greyed out and not selectable.
 Status: `NOT RUN`
 
 ### TEST 3 — select a bank, upload becomes enabled
 
-1. Tap [เลือกธนาคาร].
-2. Select K PLUS (if installed).
-3. Tap [ยืนยัน].
-
-Expected:
-- The bank card shows "K PLUS" with a green checkmark and "พร้อมใช้งาน".
-- The [+ เพิ่มรูป QR] button is now **enabled**.
-- The import hint reverts to the normal text.
-
+Expected: card shows the bank + publisher; **[+ เพิ่ม QR]** enabled; the normal hint returns.
 Status: `NOT RUN`
 
-### TEST 4 — persist across app restart
+### TEST 4 — bank persists across restart
 
-1. Select K PLUS (Test 3).
-2. Force-stop the app.
-3. Re-open the app.
-
-Expected: K PLUS is still shown as the selected bank, upload still enabled.
-
+Force-stop and reopen → the same bank is still selected and import is still enabled.
 Status: `NOT RUN`
 
 ### TEST 5 — change bank persists the new one
 
-1. Select K PLUS.
-2. Tap [เปลี่ยนธนาคาร].
-3. Select SCB EASY (if installed).
-4. Confirm.
-5. Force-stop and reopen.
-
-Expected: SCB EASY is shown, not K PLUS.
-
+**เปลี่ยนธนาคาร** → pick another → force-stop and reopen → the new bank is shown.
 Status: `NOT RUN`
 
-### TEST 6 — queue survives bank change
+### TEST 6 — changing the bank never touches the queue
 
-1. Select K PLUS, import 3 images.
-2. Change bank to SCB EASY.
-3. Check the queue.
-
-Expected: all 3 images are still there with their original statuses. Changing
-the bank does not delete, reset or re-queue any item.
-
+Select bank A, import 3 items, one in `AWAITING_USER_CONFIRMATION`; change to bank B.
+Expected: all 3 items keep their statuses and QR versions; nothing is deleted or reset;
+the next share uses bank B.
 Status: `NOT RUN`
 
-### TEST 7 — bank uninstalled while app is closed
+### TEST 7 — import duplicates and partial failures
 
-1. Select K PLUS.
-2. Force-stop the app.
-3. Uninstall K PLUS.
-4. Re-open QR Payment Queue.
-
-Expected:
-- The bank card shows "K PLUS" with "ไม่พบแอปธนาคารในเครื่อง" (red note).
-- A snackbar says "ธนาคารที่เลือกไว้ไม่พบในเครื่องอีกแล้ว กรุณาเลือกธนาคารใหม่".
-- The [+ เพิ่มรูป QR] button is **disabled**.
-- The [เปลี่ยนธนาคาร] button is enabled.
-
+Select the same screenshot twice plus a second one → summary "✓ เพิ่ม 2 รายการ /
+↷ ข้ามรายการซ้ำ 1 รายการ". Then (if reproducible) make one image fail → the other
+items stay in the queue and the failure is reported.
 Status: `NOT RUN`
 
-### TEST 8 — share opens the selected bank directly
+### TEST 8 — direct bank launch, no chooser
 
-1. Select K PLUS, import images.
-2. Tap [แชร์ไปธนาคาร] on a QUEUED item.
-
-Expected:
-- K PLUS opens directly (no Android chooser).
-- If K PLUS is not installed → the share fails and the item becomes FAILED
-  with a clear reason.
-
+Tap **ชำระเงิน** on a READY item.
+Expected: the selected bank opens directly; **no Android Sharesheet**;
+if the bank cannot be opened, the item becomes FAILED with the clear
+"ไม่สามารถเปิดธนาคารที่เลือกได้…" message and **no other app opens**.
 Status: `NOT RUN`
 
-### TEST 9 — bank installed but not advertised
+### TEST 9 — returning is not success
 
-1. If a bank is installed but does not appear as a share target, select it.
-2. Try to share a QR image.
-
-Expected: the share is still attempted (the app doesn't block it). If it fails,
-the item is FAILED with a clear reason. The bank card note explains the
-situation.
-
+Share an item, return to the app without confirming.
+Expected: the item is still open, หน้าแรก shows the confirm panel, and the item is
+**not** in ชำระแล้ว.
 Status: `NOT RUN`
 
-### TEST 10 — process death during payment
+### TEST 10 — confirm and move to ชำระแล้ว
 
-1. Share an image to the bank.
-2. Kill the app.
-3. Reopen.
-
-Expected: the item is UNKNOWN, the queue is paused, the selected bank is still
-remembered. The user resolves the UNKNOWN item manually.
-
+Tap **ทำรายการเสร็จแล้ว** → item moves to ชำระแล้ว with its completion time; the next
+item is offered on หน้าแรก but **nothing is opened automatically**.
 Status: `NOT RUN`
 
-### TEST 11 — the entire V0.4.1 flow still works
+### TEST 11 — unusable QR → เปลี่ยน QR → same Payment Item
 
-1. Select a bank.
-2. Import 3 images → progress 1/3..3/3 → auto-return to home.
-3. Pick image 1 → share to bank → bank opens.
-4. Return → confirm "ทำรายการเสร็จแล้ว" → COMPLETED.
-5. Pick image 2 → share → confirm → COMPLETED.
-6. Pick image 3 → share → confirm → COMPLETED.
-7. Finished banner: "ทำรายการครบแล้ว 3/3".
+1. On a shared item tap **QR ใช้งานไม่ได้**.
+2. Check ปัญหา: the item shows ต้องเปลี่ยน QR and the badge increased.
+3. Tap **เปลี่ยน QR** and pick one image.
 
+Expected: the same item number (`QR #08`) is still there, now on QR v2 and back in
+รอชำระ; v1 is kept as history; no new item was created.
+Status: `NOT RUN`
+
+### TEST 12 — process death during payment
+
+Share an item, kill the app mid hand-off, reopen.
+Expected: the item is ยังไม่ทราบผล, the queue pauses, the selected bank is still
+remembered, and **the QR is not sent again automatically**.
+Status: `NOT RUN`
+
+### TEST 13 — uninstalled bank while the app is closed
+
+Select K PLUS, force-stop, uninstall K PLUS, reopen.
+Expected: the card shows K PLUS with "ไม่พบแอปธนาคารในเครื่อง", a snackbar asks to
+select a new bank, and **[+ เพิ่ม QR]** is disabled until a usable bank is chosen.
+Status: `NOT RUN`
+
+### TEST 14 — installed bank that does not advertise image sharing
+
+Expected: reported as "ติดตั้งแล้ว แต่ไม่พบกิจกรรมที่รับรูป QR" (**not** "not installed");
+the hand-off is still attempted and its result is reported honestly.
+Status: `NOT RUN`
+
+### TEST 15 — rapid payment taps
+
+Hammer **ชำระเงิน** on one item: exactly one attempt, one bank launch, and only one
+`STARTED` record for that item.
+Status: `NOT RUN`
+
+### TEST 16 — the whole batch still works end to end
+
+Import 3 images → pay each one → confirm each one → all 3 appear under ชำระแล้ว →
+หน้าแรก shows "วันนี้ชำระครบแล้ว 3/3".
 Status: `NOT RUN`
 
 ## Evidence to attach
