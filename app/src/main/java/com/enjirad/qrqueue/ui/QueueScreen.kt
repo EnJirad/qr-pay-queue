@@ -91,6 +91,7 @@ import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueItem
 import com.enjirad.qrqueue.domain.HandPreference
+import androidx.compose.material3.ExperimentalMaterial3Api
 import com.enjirad.qrqueue.ui.theme.QrQueueTheme
 import java.io.File
 import java.text.SimpleDateFormat
@@ -1741,6 +1742,7 @@ private fun SettingsDialog(
 
 // ---- problem reasons bottom sheet --------------------------------------------
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProblemReasonsSheet(
     onReasonSelected: (String) -> Unit,
