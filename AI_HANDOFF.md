@@ -120,17 +120,34 @@ Pure JVM JUnit 4 (no device, no emulator, no new dependency, no `@Ignore`):
 ## Build result
 
 - LOCAL BUILD: **not performed / not possible** — no JDK/SDK in this environment.
-- GITHUB ACTIONS: **the authority**; read the run for this commit.
+- GITHUB ACTIONS: **SUCCESS** — CI is the build authority and it produced and
+  verified the APK.
 
 ## CI result
 
-To be filled from the GitHub Actions run for this commit (see git log for SHA).
-Earlier runs `35448758349` and `35448891122` were green on the previous work.
+**GREEN** on commit `ccd9c96` (run `35450053027`, 1m47s):
+
+- `testDebugUnitTest`: **PASS**
+- `lintDebug`: **PASS** (`abortOnError = true`)
+- `assembleDebug`: **PASS**
+- APK existence / non-empty / inspect: **PASS**
+- Artifact upload `qr-payment-queue-v0.4.2-debug`: **PASS**
+- Run URL: https://github.com/EnJirad/qr-pay-queue/actions/runs/35450053027
+
+The first run of this change (`35449945346`) failed `:app:compileDebugKotlin`:
+a KDoc comment contained the literal `image/*`, which Kotlin nests into an
+unclosed comment. Fixed in `ccd9c96`.
+
+## Commits
+
+- `90f3762` — feat: expand Thai bank support for QR sharing
+- `ccd9c96` — fix: remove image/* from a KDoc block comment in BankInfo.kt
 
 ## APK artifact
 
 - Workflow artifact name: `qr-payment-queue-v0.4.2-debug`
 - Path: `app/build/outputs/apk/debug/app-debug.apk`
+- Last observed size (run `35450053027`): `9.2M`
 
 ## Real-device verification
 

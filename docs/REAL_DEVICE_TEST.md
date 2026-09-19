@@ -36,8 +36,8 @@ The 16 required checks for the expanded bank support. None has been run.
 
 | Claim | Evidence |
 | --- | --- |
-| APK builds | GitHub Actions run `35448758349` (commit `b838681`): `assembleDebug` PASS, APK 9.2M |
-| Unit tests pass | same run: `testDebugUnitTest` PASS (incl. DirectBankIntentTest, SelectedBankPersistenceTest, UninstalledBankTest, ShareFallbackTest) |
+| APK builds | GitHub Actions run `35450053027` (commit `ccd9c96`): `assembleDebug` PASS, APK 9.2M |
+| Unit tests pass | same run: `testDebugUnitTest` PASS (incl. registry tests, DirectBankIntentTest, SelectedBankPersistenceTest, UninstalledBankTest, ShareFallbackTest) |
 | Lint passes | same run: `lintDebug` PASS (`abortOnError = true`) |
 | Upload gate works without device | `UploadGateTest` (6 methods): disabled when no bank, enabled when installed, disabled when uninstalled |
 | Bank classification is correct | `BankTargetTest` (9 methods): READY / INSTALLED_NOT_ADVERTISED / NOT_INSTALLED, registry lookups |
