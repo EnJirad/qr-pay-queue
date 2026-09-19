@@ -9,6 +9,29 @@
 > Therefore **no bank selection, share flow or K PLUS behaviour is claimed anywhere
 > in this repository**.
 
+## Bank expansion checklist (Xiaomi 15T Pro / Android 16)
+
+The 16 required checks for the expanded bank support. None has been run.
+
+| # | Step | Expected | Status |
+| --- | --- | --- | --- |
+| 1 | Open the app | Bank card shows "ยังไม่ได้เลือกธนาคาร", import disabled | NOT RUN |
+| 2 | Select K PLUS | Card shows K PLUS + publisher, import enabled | NOT RUN |
+| 3 | Close and reopen the app | — | NOT RUN |
+| 4 | Check the bank | K PLUS still selected | NOT RUN |
+| 5 | Add a QR image | Import succeeds | NOT RUN |
+| 6 | Tap "แชร์ไปธนาคาร" | — | NOT RUN |
+| 7 | Check the app that opened | K PLUS opens directly | NOT RUN |
+| 8 | Look for the Android Sharesheet | **No chooser appears** | NOT RUN |
+| 9 | Check K PLUS received the image | QR image is present in K PLUS | NOT RUN |
+| 10 | Return to Queue App | — | NOT RUN |
+| 11 | Check payment state | **Not auto-completed** (WAITING_USER) | NOT RUN |
+| 12 | Tap "ทำรายการเสร็จแล้ว" | Item becomes COMPLETED | NOT RUN |
+| 13 | Check the queue advanced | Next QR is selectable | NOT RUN |
+| 14 | Change the bank | New bank persists across restart | NOT RUN |
+| 15 | Select an uninstalled bank | Shown as not installed; import disabled | NOT RUN |
+| 16 | Installed bank that does not advertise image share | Status says installed / not share-capable; **not** "not installed" | NOT RUN |
+
 ## Verified so far (no device required)
 
 | Claim | Evidence |
@@ -26,6 +49,9 @@
 | Bank selection survives restart | `SelectedBankPersistenceTest` (7 methods) |
 | Uninstalled bank disables upload | `UninstalledBankTest` (5 methods): isInstalled=false, canUpload=false, requiresBankSelection=true |
 | No Sharesheet fallback | `ShareFallbackTest` (6 methods): every non-ready outcome is an error notice; the action is never a chooser |
+| Bank registry hygiene | `BankTargetTest`: unique ids/packages, valid package format, verified ⇒ Google Play URL + ISO date, 13 expected banks |
+| K PLUS package corrected | `BankTargetTest.kPlusUsesTheCurrentGooglePlayPackage`: `com.kasikorn.retail.mbanking.wap`, old id absent |
+| Unknown probe ≠ not installed | `BankTargetTest.anUnknownProbeIsNotTreatedAsInstalled` |
 
 ## Test environment (fill in when a device is available)
 

@@ -398,18 +398,36 @@ private fun SafetyCard() {
 // ---- bank selection ---------------------------------------------------------
 
 @Composable
+private fun BankIdentityRow(bank: BankInfo) {
+    Column {
+        Text(text = bank.displayName, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = bank.company,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun BankStatusNote(text: String, color: Color) {
+    Text(text = text, style = MaterialTheme.typography.bodySmall, color = color)
+}
+
+@Composable
 private fun BankSelectionCard(
     selectedBank: BankInfo?,
     bankStatus: BankTargetStatus?,
     onChangeBank: () -> Unit,
 ) {
-    val isReady = bankStatus?.canHandOff == true
+    val alreadySelected = selectedBank != null
+    val installed = bankStatus?.isInstalled == true
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
             1.dp,
-            if (selectedBank != null && !isReady) {
+            if (alreadySelected && !installed) {
                 MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
             } else {
                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
@@ -423,7 +441,8 @@ private fun BankSelectionCard(
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.height(10.dp))
-            if (selectedBank == null) {
+            val bank = selectedBank
+            if (bank == null) {
                 // No bank selected yet — first install or cleared.
                 Text(
                     text = stringResource(R.string.bank_not_selected),
@@ -436,52 +455,68 @@ private fun BankSelectionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else if (!isReady) {
-                // Bank was selected but is no longer reachable.
-                Text(
-                    text = selectedBank.displayName,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = if (bankStatus?.availability == BankAvailability.INSTALLED_NOT_ADVERTISED) {
-                        stringResource(R.string.bank_installed_not_advertised)
-                    } else {
-                        stringResource(R.string.bank_not_found)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
             } else {
-                // Bank is selected and reachable.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = selectedBank.displayName,
-                            style = MaterialTheme.typography.titleMedium,
+                // A probe that never ran or could not complete reads as UNKNOWN.
+                val availability = bankStatus?.availability ?: BankAvailability.UNKNOWN
+                when (availability) {
+                    BankAvailability.UNKNOWN -> {
+                        BankIdentityRow(bank = bank)
+                        Spacer(Modifier.height(2.dp))
+                        BankStatusNote(
+                            text = stringResource(R.string.bank_status_unknown),
+                            color = MaterialTheme.colorScheme.error,
                         )
-                        if (selectedBank.displayNameDetail.isNotEmpty()) {
-                            Text(
-                                text = selectedBank.displayNameDetail,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    }
+
+                    BankAvailability.NOT_INSTALLED -> {
+                        BankIdentityRow(bank = bank)
+                        Spacer(Modifier.height(2.dp))
+                        BankStatusNote(
+                            text = stringResource(R.string.bank_not_found),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    BankAvailability.INSTALLED_BUT_NOT_SHARE_CAPABLE -> {
+                        // Installed, but no image-share activity was found. NOT "missing".
+                        BankIdentityRow(bank = bank)
+                        Spacer(Modifier.height(2.dp))
+                        BankStatusNote(
+                            text = stringResource(R.string.bank_installed_not_advertised),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    BankAvailability.SHARE_CAPABLE -> {
+                        // Installed and advertises image sharing.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
                             )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = bank.displayName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    text = bank.company,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.bank_ready),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.bank_ready),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
             }
             Spacer(Modifier.height(14.dp))
             OutlinedButton(
@@ -511,7 +546,7 @@ private fun BankSelectionDialog(
     val context = LocalContext.current
     // Probe every known bank on this device.
     val bankStatuses = remember {
-        BankRegistry.BANKS.map { bank -> BankTarget.query(context, bank) }
+        BankRegistry.allBanks.map { bank -> BankTarget.query(context, bank) }
     }
     var selectedId by remember { mutableStateOf(currentBank?.id) }
 
@@ -555,7 +590,9 @@ private fun BankSelectionDialog(
                                 text = when {
                                     status.availability == BankAvailability.NOT_INSTALLED ->
                                         stringResource(R.string.bank_option_not_installed)
-                                    status.availability == BankAvailability.INSTALLED_NOT_ADVERTISED ->
+                                    status.availability == BankAvailability.UNKNOWN ->
+                                        stringResource(R.string.bank_option_unknown)
+                                    status.availability == BankAvailability.INSTALLED_BUT_NOT_SHARE_CAPABLE ->
                                         stringResource(R.string.bank_option_not_advertised)
                                     else ->
                                         stringResource(R.string.bank_option_ready)
@@ -563,7 +600,7 @@ private fun BankSelectionDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = when {
                                     !isAvailable -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                    status.availability == BankAvailability.INSTALLED_NOT_ADVERTISED ->
+                                    status.availability == BankAvailability.INSTALLED_BUT_NOT_SHARE_CAPABLE ->
                                         MaterialTheme.colorScheme.error
                                     else -> MaterialTheme.colorScheme.primary
                                 },

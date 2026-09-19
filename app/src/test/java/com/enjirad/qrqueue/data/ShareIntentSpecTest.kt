@@ -18,9 +18,12 @@ class ShareIntentSpecTest {
     private val contentUri =
         "content://com.enjirad.qrqueue.fileprovider/qrqueue/images/item-1.png"
 
+    private val kPlus = BankRegistry.K_PLUS.packageName
+    private val scb = BankRegistry.SCB_EASY.packageName
+
     @Test
     fun aContentUriBecomesAStandardImageShare() {
-        val spec = QrShare.shareSpec(contentUri, "image/png", BankRegistry.K_PLUS.name)
+        val spec = QrShare.shareSpec(contentUri, "image/png", kPlus)
 
         assertEquals(QrShare.ACTION_SEND, spec?.action)
         assertEquals("android.intent.action.SEND", spec?.action)
@@ -31,52 +34,52 @@ class ShareIntentSpecTest {
 
     @Test
     fun theHandOffIsAddressedToTheSelectedBank() {
-        val spec = QrShare.shareSpec(contentUri, "image/png", BankRegistry.K_PLUS.name)
+        val spec = QrShare.shareSpec(contentUri, "image/png", kPlus)
 
-        assertEquals("com.kasikornbank.kplus", spec?.targetPackage)
-        assertEquals(BankRegistry.K_PLUS.name, spec?.targetPackage)
+        assertEquals("com.kasikorn.retail.mbanking.wap", spec?.targetPackage)
+        assertEquals(kPlus, spec?.targetPackage)
     }
 
     @Test
     fun theTargetPackageComesFromTheBankRegistry() {
-        val spec = QrShare.shareSpec(contentUri, "image/png", BankRegistry.SCB_EASY.name)
+        val spec = QrShare.shareSpec(contentUri, "image/png", scb)
 
-        assertEquals("com.scb.BankApp", spec?.targetPackage)
-        assertEquals(BankRegistry.SCB_EASY.name, spec?.targetPackage)
+        assertEquals("com.scb.phone", spec?.targetPackage)
+        assertEquals(scb, spec?.targetPackage)
     }
 
     @Test
     fun noChooserIsEverBuilt() {
         assertEquals("android.intent.action.CHOOSER", QrShare.ACTION_CHOOSER)
-        val spec = QrShare.shareSpec(contentUri, "image/png", BankRegistry.K_PLUS.name)
+        val spec = QrShare.shareSpec(contentUri, "image/png", kPlus)
         assertNotEquals(QrShare.ACTION_CHOOSER, spec?.action)
     }
 
     @Test
     fun theStreamUriIsAlwaysAContentUri() {
-        val spec = QrShare.shareSpec(contentUri, "image/jpeg", BankRegistry.K_PLUS.name)
+        val spec = QrShare.shareSpec(contentUri, "image/jpeg", kPlus)
 
         assertTrue(spec?.streamUri?.startsWith(QrShare.CONTENT_URI_PREFIX) == true)
     }
 
     @Test
     fun aFileUriIsNeverShared() {
-        assertNull(QrShare.shareSpec("file:///data/user/0/app/files/qrqueue/images/a.png", "image/png", BankRegistry.K_PLUS.name))
-        assertNull(QrShare.shareSpec(null, "image/png", BankRegistry.K_PLUS.name))
-        assertNull(QrShare.shareSpec("", "image/png", BankRegistry.K_PLUS.name))
-        assertNull(QrShare.shareSpec("   ", "image/png", BankRegistry.K_PLUS.name))
+        assertNull(QrShare.shareSpec("file:///data/user/0/app/files/qrqueue/images/a.png", "image/png", kPlus))
+        assertNull(QrShare.shareSpec(null, "image/png", kPlus))
+        assertNull(QrShare.shareSpec("", "image/png", kPlus))
+        assertNull(QrShare.shareSpec("   ", "image/png", kPlus))
     }
 
     @Test
     fun aMissingOrNonImageTypeFallsBackToAnyImage() {
-        assertEquals("image/*", QrShare.shareSpec(contentUri, null, BankRegistry.K_PLUS.name)?.mimeType)
-        assertEquals("image/*", QrShare.shareSpec(contentUri, "", BankRegistry.K_PLUS.name)?.mimeType)
-        assertEquals("image/*", QrShare.shareSpec(contentUri, "application/pdf", BankRegistry.K_PLUS.name)?.mimeType)
+        assertEquals("image/*", QrShare.shareSpec(contentUri, null, kPlus)?.mimeType)
+        assertEquals("image/*", QrShare.shareSpec(contentUri, "", kPlus)?.mimeType)
+        assertEquals("image/*", QrShare.shareSpec(contentUri, "application/pdf", kPlus)?.mimeType)
     }
 
     @Test
     fun theReadGrantIsAlwaysRequested() {
-        assertTrue(QrShare.shareSpec(contentUri, "image/png", BankRegistry.K_PLUS.name)?.grantReadUriPermission == true)
-        assertTrue(QrShare.shareSpec(contentUri, null, BankRegistry.K_PLUS.name)?.grantReadUriPermission == true)
+        assertTrue(QrShare.shareSpec(contentUri, "image/png", kPlus)?.grantReadUriPermission == true)
+        assertTrue(QrShare.shareSpec(contentUri, null, kPlus)?.grantReadUriPermission == true)
     }
 }

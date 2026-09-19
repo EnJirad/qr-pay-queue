@@ -63,7 +63,7 @@ class ShareFallbackTest {
         val spec = QrShare.shareSpec(
             "content://com.enjirad.qrqueue.fileprovider/qrqueue/images/qr.png",
             "image/png",
-            BankRegistry.K_PLUS.name,
+            BankRegistry.K_PLUS.packageName,
         )
 
         assertEquals(QrShare.ACTION_SEND, spec?.action)

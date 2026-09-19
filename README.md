@@ -26,8 +26,9 @@ read the QR and to decide what the payment is.
 QR Payment Queue walks you through a batch of QR payment screenshots, one image
 at a time:
 
-1. **Select a banking app** (K PLUS, SCB EASY, Krungthai NEXT, or Bualuang
-   mBanking) — this is saved and survives every app restart.
+1. **Select a banking app** (K PLUS, SCB EASY, Krungthai NEXT, Bangkok Bank,
+   krungsri, ttb touch, MyMo by GSB, CIMB THAI, UOB TMRW, Dime!, MAKE by KBank,
+   Kept, or TrueMoney) — this is saved and survives every app restart.
 2. Import **several QR screenshots at once** from Android's photo picker. (The
    import button is disabled until you select a bank.)
 3. Return to the home screen **by itself** as soon as the import is finished.
@@ -179,19 +180,37 @@ app and record what actually happened.
 
 ## Known banking apps
 
-The app probes these banking packages at runtime:
+The app probes these packages at runtime. Every package id below was read from
+the app's **live Google Play listing on 2026-09-19** (see
+`BankRegistry.allBanks` — the single source of truth):
 
-| Bank | Package | Notes |
+| App | Package | Publisher |
 | --- | --- | --- |
-| K PLUS | `com.kasikornbank.kplus` | KBank |
-| SCB EASY | `com.scb.BankApp` | Siam Commercial Bank |
-| Krungthai NEXT | `com.krungthai.nextbanking` | Bank of Ayudhya |
-| Bualuang mBanking | `com.bblmobilebanking` | Bangkok Bank |
+| K PLUS | `com.kasikorn.retail.mbanking.wap` | Kasikornbank (KBank) |
+| SCB EASY | `com.scb.phone` | Siam Commercial Bank |
+| Krungthai NEXT | `ktbcs.netbank` | Krungthai Bank |
+| Bangkok Bank Mobile Banking | `com.bbl.mobilebanking` | Bangkok Bank |
+| krungsri | `com.krungsri.kma` | Bank of Ayudhya |
+| ttb touch | `com.TMBTOUCH.PRODUCTION` | TMBThanachart |
+| MyMo by GSB | `com.mobilife.gsb.mymo` | Government Savings Bank |
+| CIMB THAI | `com.cimbthai.digital.mycimb` | CIMB Thai Bank |
+| UOB TMRW Thailand | `com.uob.mightyth2` | United Overseas Bank (Thai) |
+| Dime! | `com.dimekkp.dimeapp` | KKP Dime |
+| MAKE by KBank | `com.kasikornbank.makebykbank` | Kasikornbank (KBank) |
+| Kept | `com.krungsri.kept` | Bank of Ayudhya |
+| TrueMoney | `th.co.truemoney.wallet` | True Money Co. Ltd. |
 
-Package names come from each app's Google Play listing. The runtime probe
-(`BankTarget.query`) checks the real device; the list above is the candidate
-set. The `<queries>` block in the manifest ensures Android 11+ can see these
-packages.
+**Package verified** (the id exists on Google Play and belongs to that publisher)
+is *not* the same as **share verified** (the app accepts a shared `image/*`
+intent). Package ids are verified; share capability is reported at runtime by the
+probe, and no bank is claimed "share verified" until it is tested on a real
+device. `BankAvailability` therefore distinguishes *installed*,
+*installed but not share-capable*, *not installed* and *unknown* — a failed
+share-capability probe is never reported as "not installed".
+
+The runtime probe (`BankTarget.query`) checks the real device; the list above is
+the candidate set. The `<queries>` block in the manifest lists exactly these
+packages so Android 11+ can see them (no broad visibility).
 
 ## Security and payment safety model
 

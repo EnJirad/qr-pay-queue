@@ -15,7 +15,7 @@ class InMemoryBankSelectionStore(
 ) : BankSelectionStore {
 
     override fun save(bank: BankInfo): Boolean {
-        backing[BankSelectionCodec.KEY_BANK_PACKAGE] = bank.name
+        backing[BankSelectionCodec.KEY_BANK_PACKAGE] = bank.packageName
         backing[BankSelectionCodec.KEY_BANK_ID] = bank.id
         return true
     }

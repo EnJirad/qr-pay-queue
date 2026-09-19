@@ -40,7 +40,7 @@ object BankSelectionCodec {
         val bank = bankId?.let { BankRegistry.findById(it) }
             ?: BankRegistry.findByPackage(packageName)
         // Reject a mismatched pair (id from one bank, package from another).
-        return bank?.takeIf { it.name == packageName }
+        return bank?.takeIf { it.packageName == packageName }
     }
 }
 
@@ -54,7 +54,7 @@ class SharedPreferencesBankSelectionStore(context: Context) : BankSelectionStore
 
     override fun save(bank: BankInfo): Boolean = runCatching {
         prefs.edit()
-            .putString(BankSelectionCodec.KEY_BANK_PACKAGE, bank.name)
+            .putString(BankSelectionCodec.KEY_BANK_PACKAGE, bank.packageName)
             .putString(BankSelectionCodec.KEY_BANK_ID, bank.id)
             .apply()
     }.isSuccess

@@ -30,7 +30,7 @@ class SelectedBankPersistenceTest {
 
         val afterRestart = process()
         assertEquals(BankRegistry.K_PLUS, afterRestart.load())
-        assertEquals("com.kasikornbank.kplus", afterRestart.load()?.name)
+        assertEquals("com.kasikorn.retail.mbanking.wap", afterRestart.load()?.packageName)
     }
 
     @Test
@@ -40,7 +40,7 @@ class SelectedBankPersistenceTest {
 
         val afterRestart = process()
         assertEquals(BankRegistry.SCB_EASY, afterRestart.load())
-        assertEquals("com.scb.BankApp", afterRestart.load()?.name)
+        assertEquals("com.scb.phone", afterRestart.load()?.packageName)
     }
 
     @Test
@@ -63,14 +63,14 @@ class SelectedBankPersistenceTest {
     fun aMismatchedIdAndPackageDecodesToNothing() {
         // The id says K PLUS, the package says SCB EASY. The app never guesses.
         device[BankSelectionCodec.KEY_BANK_ID] = BankRegistry.K_PLUS.id
-        device[BankSelectionCodec.KEY_BANK_PACKAGE] = BankRegistry.SCB_EASY.name
+        device[BankSelectionCodec.KEY_BANK_PACKAGE] = BankRegistry.SCB_EASY.packageName
 
         assertNull(process().load())
     }
 
     @Test
     fun anOlderValueWithoutAnIdStillResolvesByPackage() {
-        device[BankSelectionCodec.KEY_BANK_PACKAGE] = BankRegistry.K_PLUS.name
+        device[BankSelectionCodec.KEY_BANK_PACKAGE] = BankRegistry.K_PLUS.packageName
 
         assertEquals(BankRegistry.K_PLUS, process().load())
     }

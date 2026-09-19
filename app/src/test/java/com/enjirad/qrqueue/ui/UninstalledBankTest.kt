@@ -20,7 +20,7 @@ class UninstalledBankTest {
     private fun status(availability: BankAvailability) = BankTargetStatus(
         bank = BankRegistry.K_PLUS,
         availability = availability,
-        advertised = availability == BankAvailability.READY,
+        advertised = availability == BankAvailability.SHARE_CAPABLE,
     )
 
     @Test
@@ -58,7 +58,7 @@ class UninstalledBankTest {
     fun aReadyBankDoesNotRequireSelection() {
         val state = QueueUiState(
             selectedBank = BankRegistry.K_PLUS,
-            bankStatus = status(BankAvailability.READY),
+            bankStatus = status(BankAvailability.SHARE_CAPABLE),
         )
 
         assertTrue(state.canImport)

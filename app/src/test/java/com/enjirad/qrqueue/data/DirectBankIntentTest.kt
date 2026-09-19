@@ -24,7 +24,7 @@ class DirectBankIntentTest {
 
     @Test
     fun theIntentIsAStandardSendWithTheImageMimeType() {
-        val spec = QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.name)
+        val spec = QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.packageName)
 
         assertEquals("android.intent.action.SEND", spec?.action)
         assertEquals(QrShare.ACTION_SEND, spec?.action)
@@ -33,7 +33,7 @@ class DirectBankIntentTest {
 
     @Test
     fun theQrUsesTheExtraStreamContentUri() {
-        val spec = QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.name)
+        val spec = QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.packageName)
 
         assertEquals("android.intent.extra.STREAM", QrShare.EXTRA_STREAM)
         assertEquals(qrUri, spec?.streamUri)
@@ -44,11 +44,11 @@ class DirectBankIntentTest {
     @Test
     fun theReadPermissionIsAlwaysGranted() {
         assertTrue(
-            QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.name)
+            QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.packageName)
                 ?.grantReadUriPermission == true,
         )
         assertTrue(
-            QrShare.shareSpec(qrUri, null, BankRegistry.K_PLUS.name)
+            QrShare.shareSpec(qrUri, null, BankRegistry.K_PLUS.packageName)
                 ?.grantReadUriPermission == true,
         )
     }
@@ -56,33 +56,44 @@ class DirectBankIntentTest {
     @Test
     fun theTargetIsTheSelectedBankPackage() {
         assertEquals(
-            "com.kasikornbank.kplus",
-            QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.name)?.targetPackage,
+            "com.kasikorn.retail.mbanking.wap",
+            QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.packageName)?.targetPackage,
         )
         assertEquals(
-            "com.scb.BankApp",
-            QrShare.shareSpec(qrUri, "image/png", BankRegistry.SCB_EASY.name)?.targetPackage,
+            "com.scb.phone",
+            QrShare.shareSpec(qrUri, "image/png", BankRegistry.SCB_EASY.packageName)?.targetPackage,
         )
         // A different selection must produce a different addressee.
         assertNotEquals(
-            BankRegistry.K_PLUS.name,
-            QrShare.shareSpec(qrUri, "image/png", BankRegistry.SCB_EASY.name)?.targetPackage,
+            BankRegistry.K_PLUS.packageName,
+            QrShare.shareSpec(qrUri, "image/png", BankRegistry.SCB_EASY.packageName)?.targetPackage,
         )
     }
 
     @Test
+    fun everyRegisteredBankResolvesToItsOwnTargetPackage() {
+        BankRegistry.allBanks.forEach { bank ->
+            val spec = QrShare.shareSpec(qrUri, "image/png", bank.packageName)
+            assertEquals(bank.packageName, spec?.targetPackage)
+        }
+    }
+
+    @Test
     fun theMimeTypeFallsBackToAnyImage() {
-        assertEquals("image/*", QrShare.shareSpec(qrUri, null, BankRegistry.K_PLUS.name)?.mimeType)
         assertEquals(
             "image/*",
-            QrShare.shareSpec(qrUri, "application/pdf", BankRegistry.K_PLUS.name)?.mimeType,
+            QrShare.shareSpec(qrUri, null, BankRegistry.K_PLUS.packageName)?.mimeType,
+        )
+        assertEquals(
+            "image/*",
+            QrShare.shareSpec(qrUri, "application/pdf", BankRegistry.K_PLUS.packageName)?.mimeType,
         )
     }
 
     @Test
     fun aNonContentUriIsNeverShared() {
-        assertNull(QrShare.shareSpec("file:///data/app/qr.png", "image/png", BankRegistry.K_PLUS.name))
-        assertNull(QrShare.shareSpec(null, "image/png", BankRegistry.K_PLUS.name))
+        assertNull(QrShare.shareSpec("file:///data/app/qr.png", "image/png", BankRegistry.K_PLUS.packageName))
+        assertNull(QrShare.shareSpec(null, "image/png", BankRegistry.K_PLUS.packageName))
     }
 
     @Test
@@ -90,7 +101,7 @@ class DirectBankIntentTest {
         assertEquals("android.intent.action.CHOOSER", QrShare.ACTION_CHOOSER)
         assertNotEquals(
             QrShare.ACTION_CHOOSER,
-            QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.name)?.action,
+            QrShare.shareSpec(qrUri, "image/png", BankRegistry.K_PLUS.packageName)?.action,
         )
     }
 }

@@ -5,202 +5,160 @@ result that has not been observed. Update it after every meaningful work session
 
 ## Project
 
-QR Payment Queue — native Android application that lets the user select a
-banking app, queue QR payment screenshots, and hand each image straight to that
-bank, one image at a time.
+QR Payment Queue — native Android application that lets the user select one
+financial app, queue QR payment screenshots, and hand each image straight to that
+app, one image at a time.
 
 Package `com.enjirad.qrqueue`. Native Android only: Kotlin + Jetpack Compose +
-AndroidX + Material 3 + Gradle Kotlin DSL. No web technology anywhere.
+AndroidX + Material 3 + Gradle Kotlin DSL. No web technology, no WebView, no
+Accessibility automation, no root, no PIN/OTP automation, no screen scraping, no
+private bank API, no automatic payment confirmation.
 
 ## Current version
 
-0.4.2 (versionCode 6) — V0.4.2 **Direct Bank Share + Persistent Bank Selection +
-Upload Gate**.
+0.4.2 (versionCode 6) — plus the **Thai bank registry expansion** described below.
+The version was deliberately not bumped so the existing CI workflow and artifact
+name (`qr-payment-queue-v0.4.2-debug`) stay stable.
 
-## What V0.4.2 is
+## This change: expand validated Thai bank support
 
-```
-V0.4.1:  import → queue → share to K PLUS (hardcoded) → confirm
-V0.4.2:  SELECT BANK → persist → import gate → queue → share to the selected
-         bank's package only → confirm
-```
+Goal: support as many major Thai banking / payment apps as can be **verified**,
+treating the package id as the single source of truth and never guessing.
 
-1. **Bank selection on the home screen.** A `BankSelectionCard` at the top of
-   every screen shows the current bank's status (ready / installed-not-advertised
-   / not-found / not-selected) with a button to choose or change.
-2. **Upload gate.** `QueueUiState.canImport` is the single source of truth:
-   `selectedBank != null && bankStatus?.canHandOff == true`. The import button is
-   disabled when this is false — the gate is structural, never a toast after the
-   fact.
-3. **Bank selection dialog.** Probes every known bank on the device at dialog
-   open time (`BankTarget.query`). Installed + advertising banks are selectable,
-   not-installed banks are greyed out.
-4. **Persistent selection.** `BankSelectionStore` (production:
-   `SharedPreferencesBankSelectionStore`) stores `selectedBankPackage` +
-   `selectedBankId`. On init the ViewModel loads the bank and **re-probes it on
-   the current device**. If the bank was uninstalled since the last session the
-   upload gate is disabled immediately and the user is told (V0.4.2 §12/§13). The
-   old selection is kept so the card can still show "K PLUS — ไม่พบแอป".
-5. **Direct bank share, no Sharesheet.** `QrShare.bankShareIntent` takes
-   `targetPackage` and calls `setPackage(...)`. `Intent.createChooser` is not used
-   anywhere in the app. The `ShareIntentSpec.targetPackage` field is the unit-
-   tested contract.
-6. **Target re-verification at share time.** `QueueViewModel.beginHandOff`
-   re-queries the selected bank immediately before the hand-off
-   (`BankTarget.query` → installed?) and rejects the launch through
-   `BankTarget.preflight` + `BankShareFlow.noticeFor` when there is no bank or the
-   package is gone. `QueueScreen.launchImageIntent` additionally requires
-   `intent.resolveActivity(...)` to resolve before `startActivity`, and any
-   `ActivityNotFoundException` / `SecurityException` becomes a FAILED item with an
-   error — never a chooser and never another app (V0.4.2 §9/§11/§17).
-7. **`isInstalled` and `canReceiveQrImage` are separate.** `BankTarget` exposes
-   both. "Package installed" and "advertises this share activity" answer different
-   questions on Android 11+, and an installed-but-not-advertising bank is still
-   attempted and its result reported honestly (V0.4.2 §11C/§14).
-8. **Generalized copy.** The user-visible strings no longer hardcode K PLUS:
-   the confirm panel, re-share dialog and waiting card use the selected bank's
-   display name, and `PaymentStatus.SHARING` reads "กำลังเปิดแอปธนาคาร".
-9. **Queue and state machine unchanged.** `QUEUED → SHARING → WAITING_USER →
-   COMPLETED`, `FAILED`, `UNKNOWN` — the V0.4.1 state machine, per-item
-   transitions, single-hand-off rule and manual confirmation are untouched.
-   Changing the selected bank does not affect queued items, their status, or
-   their share targets; the next share uses the bank selected at that moment
-   (V0.4.2 §8/§18/§19/§20).
+Method (rules that were followed):
 
-QR decoding is **not** part of V0.4.2 and must not come back (V0.4.2 §21).
+1. Search Google Play; open the app's **live listing**.
+2. Read the package id **from the listing URL** (`.../details?id=<package>`).
+3. Confirm the publisher is the real bank/company.
+4. Any package id that could not be confirmed on Google Play was **not added**.
 
-## Version history
+Old packages in this repo were wrong and are gone from the registry:
 
-| Version | Scope |
-| --- | --- |
-| 0.1.0 | Native Android foundation, APK build, CI |
-| 0.2.0 | Multi-image photo-picker import, app-private image storage |
-| 0.3.0 | QR decoding (ZXing) + EMVCo PromptPay parsing + queue audit |
-| 0.4.0 | Image queue + K PLUS hand-off + manual user confirmation; QR decoding removed |
-| 0.4.1 | Home-screen queue, self-closing import, one-by-one direct K PLUS hand-off |
-| **0.4.2** | **Bank selection, persistent selected bank, upload gate, direct bank share** |
+- `com.kasikornbank.kplus` → **404 on Google Play**; the live K PLUS listing is
+  `com.kasikorn.retail.mbanking.wap`.
+- `com.scb.BankApp` → 404; live is `com.scb.phone`.
+- `com.krungthai.nextbanking` → 404; live is `ktbcs.netbank`.
+- `com.bblmobilebanking` → 404; live is `com.bbl.mobilebanking`.
 
-## Files added (this session)
+### Verified banks (single source of truth: `BankRegistry.allBanks`)
 
-- `app/src/main/java/com/enjirad/qrqueue/data/BankSelectionStore.kt` —
-  `BankSelectionStore` interface, `SharedPreferencesBankSelectionStore`, and the
-  pure `BankSelectionCodec` (id-first, package-fallback, mismatch-rejecting).
-- `app/src/test/java/com/enjirad/qrqueue/data/InMemoryBankSelectionStore.kt` —
-  test-only store backed by a map so a restart can be simulated.
-- `app/src/test/java/com/enjirad/qrqueue/data/DirectBankIntentTest.kt` (7 methods).
-- `app/src/test/java/com/enjirad/qrqueue/data/SelectedBankPersistenceTest.kt` (7 methods).
-- `app/src/test/java/com/enjirad/qrqueue/ui/UninstalledBankTest.kt` (5 methods).
-- `app/src/test/java/com/enjirad/qrqueue/ui/ShareFallbackTest.kt` (6 methods).
+Package ids read from Google Play on **2026-09-19**.
 
-`BankInfo.kt` (from the earlier V0.4.2 work) still holds `BankInfo`,
-`BankAvailability`, `BankTargetStatus`, `BankRegistry`, and now the new
-`BankShareReadiness` enum.
+| App | Package | Publisher | Category | Share status |
+| --- | --- | --- | --- | --- |
+| K PLUS | `com.kasikorn.retail.mbanking.wap` | Kasikornbank (KBank) | commercial | `UNKNOWN` (runtime) |
+| SCB EASY | `com.scb.phone` | Siam Commercial Bank | commercial | `UNKNOWN` (runtime) |
+| Krungthai NEXT | `ktbcs.netbank` | Krungthai Bank | commercial | `UNKNOWN` (runtime) |
+| Bangkok Bank Mobile Banking | `com.bbl.mobilebanking` | Bangkok Bank | commercial | `UNKNOWN` (runtime) |
+| krungsri | `com.krungsri.kma` | Bank of Ayudhya | commercial | `UNKNOWN` (runtime) |
+| ttb touch | `com.TMBTOUCH.PRODUCTION` | TMBThanachart | commercial | `UNKNOWN` (runtime) |
+| MyMo by GSB | `com.mobilife.gsb.mymo` | Government Savings Bank | specialised | `UNKNOWN` (runtime) |
+| CIMB THAI | `com.cimbthai.digital.mycimb` | CIMB Thai Bank | commercial | `UNKNOWN` (runtime) |
+| UOB TMRW Thailand | `com.uob.mightyth2` | United Overseas Bank (Thai) | commercial | `UNKNOWN` (runtime) |
+| Dime! | `com.dimekkp.dimeapp` | KKP Dime | digital | `UNKNOWN` (runtime) |
+| MAKE by KBank | `com.kasikornbank.makebykbank` | Kasikornbank (KBank) | digital | `UNKNOWN` (runtime) |
+| Kept | `com.krungsri.kept` | Bank of Ayudhya | digital | `UNKNOWN` (runtime) |
+| TrueMoney | `th.co.truemoney.wallet` | True Money Co. Ltd. | wallet | `UNKNOWN` (runtime) |
 
-## Files changed (this session)
+**"Google Play package verified" means the id exists on Play and belongs to that
+publisher. It does NOT mean the app accepts a shared QR image.** `QrShareSupport`
+is `UNKNOWN` for every bank until a real-device test (or official documentation)
+proves otherwise; the runtime probe decides at selection time.
 
-- `data/BankTarget.kt` — added the pure `preflight(selectedBank, installed)`,
-  public `isInstalled(context, bank)` and `canReceiveQrImage(context, bank)`;
-  `query` now composes those two instead of duplicating the probe.
-- `data/QueueRepository.kt` — the bank selection now delegates to a
-  `BankSelectionStore` (constructor-injectable); the old SharedPreferences keys
-  moved into `BankSelectionCodec`.
-- `ui/QueueViewModel.kt` — new pure `BankShareFlow.noticeFor(...)`; the
-  `QueueNotice.SHARE_FAILED` became `SHARE_TARGET_UNAVAILABLE`; added
-  `QueueUiState.requiresBankSelection`; share and re-share now go through
-  `beginHandOff` which re-verifies the target; a failed launch reports the
-  cannot-open error instead of silently failing.
-- `ui/QueueScreen.kt` — `launchImageIntent` requires the share intent to resolve
-  before launching (no chooser fallback); the confirm panel, re-share dialog and
-  waiting card now take the selected bank name; added a `bank_generic` fallback.
-- `domain/BankInfo.kt` — added the `BankShareReadiness` enum.
-- `domain/PaymentStatus.kt` — the `SHARING` label is now "กำลังเปิดแอปธนาคาร".
-- `res/values/strings.xml` — `notice_share_failed` → `notice_share_target_unavailable`
-  (the V0.4.2 §17 wording), `confirm_body`/`reshare_dialog_title`/`waiting_body`
-  now take the bank name, added `bank_generic`.
-- `data/QrShare.kt`, `app/build.gradle.kts` — comments generalized from K PLUS to
-  the selected bank (no behavior change; the package was never in the comments).
+### Checked but NOT added (package id could not be confirmed on Play here)
 
-## Dependency changes
+LINE BK, ShopeePay (the live `com.shopee.th` is the Shopee shopping app, not a
+standalone QR payer), KKP Mobile, TISCO, LH Bank, GHB ALL, BAAC A-Mobile, Islamic
+Bank of Thailand, Bank of China (Thai), ICBC Thailand, Standard Chartered
+Thailand, Citibank, EXIM. Adding these requires the same Play verification first.
 
-**None.** SharedPreferences is part of the Android platform. No new library was
-added or removed.
+## Model and states
+
+- `BankInfo` now carries `id`, `displayName`, `packageName`, `company`,
+  `category`, `googlePlayUrl`, `verificationDate`, `qrShareSupport`, `verified`.
+- `BankCategory`: commercial / specialised / digital bank / payment wallet.
+- `QrShareSupport`: `SUPPORTED` / `UNKNOWN` / `NOT_SUPPORTED`.
+- `BankAvailability` (runtime, §5): `SHARE_CAPABLE`,
+  `INSTALLED_BUT_NOT_SHARE_CAPABLE`, `NOT_INSTALLED`, `UNKNOWN`.
+  `classify(...)` takes `installed: Boolean?`; `null` (probe could not complete)
+  becomes `UNKNOWN` and is **never** treated as installed.
+- `BankTargetStatus`: `isInstalled`, `canHandOff`, `shareCapable`.
+
+## Files changed
+
+- `domain/BankInfo.kt` — new `BankInfo`/`BankCategory`/`QrShareSupport`, 4-state
+  `BankAvailability`, `BankTargetStatus`, and the 13-entry `BankRegistry`
+  (`allBanks`, `findById`, `findByPackage`, `VERIFIED_ON`).
+- `data/BankTarget.kt` — `classify` takes tri-state `installed`; `query` reports
+  `UNKNOWN` on a non-visibility failure; package lookups use `packageName`.
+- `data/BankSelectionStore.kt`, `ui/QueueViewModel.kt` — use `packageName`.
+- `ui/QueueScreen.kt` — bank card/dialog render the 4 runtime states and show the
+  publisher; no "ready" claim unless the app advertises image sharing.
+- `AndroidManifest.xml` — `<queries>` lists exactly the 13 verified packages.
+- `res/values/strings.xml` — status wording (`ติดตั้งแล้ว · ส่งรูป QR ได้`,
+  `ไม่พบกิจกรรมที่รับรูป QR`, `ไม่สามารถตรวจสอบได้`).
+- `README.md` — verified bank table and the package-vs-share distinction.
 
 ## Tests
 
-Pure JVM JUnit 4 (no device, no emulator, no `@Ignore`, no new dependency):
+Pure JVM JUnit 4 (no device, no emulator, no new dependency, no `@Ignore`):
 
-- Existing 8 classes (per the last observed CI run: 76 methods) —
-  `PaymentStatusTest`, `PaymentQueueTest`, `QueueImportTest`, `ImportCompletionTest`,
-  `ShareIntentSpecTest`, `BankTargetTest`, `UploadGateTest`.
-- New this session (25 methods): `DirectBankIntentTest` (ACTION_SEND, image MIME,
-  EXTRA_STREAM content URI, read grant, setPackage target per bank, no chooser),
-  `SelectedBankPersistenceTest` (no bank → null; select K PLUS → restore after
-  restart; change bank → new one restored; clear; unknown/mismatched decode),
-  `UninstalledBankTest` (isInstalled=false, canUpload=false,
-  requiresBankSelection=true, old selection kept; pure `preflight`),
-  `ShareFallbackTest` (every non-ready outcome is an error notice; the action is
-  never a chooser).
+- Registry: unique ids, unique packages, non-empty/valid package format,
+  verified ⇒ Google Play URL matching the package and an ISO verification date,
+  the 13 expected ids present.
+- K PLUS: expects `com.kasikorn.retail.mbanking.wap` and asserts the old
+  `com.kasikornbank.kplus` is absent, and that all four obsolete packages are
+  gone from the registry.
+- Intent: ACTION_SEND, `image/*`, EXTRA_STREAM `content://`, read grant,
+  `setPackage` target per registry bank, no chooser.
+- Persistence: selected bank survives restart; change bank updates it; unknown /
+  mismatched stored value decodes to nothing.
+- Uninstall: selected-but-missing package ⇒ `isInstalled=false`,
+  `canUpload=false`, `requiresBankSelection=true`, old value kept.
+- `UNKNOWN` probe ⇒ not installed, cannot hand off.
 
 ## Build result
 
-- LOCAL BUILD: **not performed / not possible** — this environment has no
-  JDK/SDK (`java` is not installed).
-- GITHUB ACTIONS: **SUCCESS** — CI is the build authority for this project and
-  it produced and verified the APK.
+- LOCAL BUILD: **not performed / not possible** — no JDK/SDK in this environment.
+- GITHUB ACTIONS: **the authority**; read the run for this commit.
 
 ## CI result
 
-**GREEN** on commit `b838681` (run `35448758349`, 2m0s):
-
-- `testDebugUnitTest`: **PASS** (includes the 4 new test classes)
-- `lintDebug`: **PASS** (`abortOnError = true`)
-- `assembleDebug`: **PASS**
-- APK existence / non-empty / inspect: **PASS**
-- Artifact upload `qr-payment-queue-v0.4.2-debug`: **PASS**
-- Run URL: https://github.com/EnJirad/qr-pay-queue/actions/runs/35448758349
-
-Earlier observed run `35443754450` (commit `4713f68`) was green as well.
+To be filled from the GitHub Actions run for this commit (see git log for SHA).
+Earlier runs `35448758349` and `35448891122` were green on the previous work.
 
 ## APK artifact
 
 - Workflow artifact name: `qr-payment-queue-v0.4.2-debug`
 - Path: `app/build/outputs/apk/debug/app-debug.apk`
-- Last observed size (run `35448758349`): `9.2M`.
 
 ## Real-device verification
 
-**NOT DONE.** No device or emulator in this environment. The bank selection,
-upload gate and direct share are unit-tested as pure logic; the real-device
-questions are: does the dialog probe correctly, does the persisted selection
-survive process death, and does the share actually open the selected bank without
-the Android Sharesheet? Plan in `docs/REAL_DEVICE_TEST.md` (Xiaomi 15T Pro,
-Android 16). Until those runs exist the app is **REAL DEVICE VERIFICATION: NOT
-VERIFIED**.
+**NOT DONE — REAL DEVICE VERIFICATION: NOT VERIFIED.** No device or emulator
+here. Share capability for every bank is `UNKNOWN`. The checklist (Xiaomi 15T
+Pro, Android 16) is in `docs/REAL_DEVICE_TEST.md`. Do not claim any bank is
+"share verified" until those runs exist.
 
 ## Known limitations
 
-1. **Bank confirmation stays manual.** Without an official supported bank
-   integration the app cannot know whether a transaction completed.
-2. **Package names come from Google Play listings.** If a bank changes its
-   package name the app reports it as "not found" and the user selects another.
-3. **Not all banking apps support image sharing.** `INSTALLED_NOT_ADVERTISED`
-   means the bank is installed but its share activity was not found; the hand-off
-   is still attempted and the result is reported honestly.
-4. **Changing banks does not affect queued items.** Items in WAITING_USER or
-   UNKNOWN still reference the bank selected when they were shared; the next
-   share uses the current bank.
-5. **K PLUS cannot be verified from here** — needs a real device.
-6. No instrumented UI tests; no emulator in CI.
-7. The `.env.example` / `.env.keys` web leftovers remain tracked but unused.
+1. Share capability is unverified for every bank (needs a device).
+2. Some major banks (KKP Mobile, TISCO, LH Bank, GHB, BAAC, IBank, BOC, ICBC,
+   SCB, Citi, StanChart, LINE BK, ShopeePay) are not registered because their
+   package ids could not be confirmed on Google Play here.
+3. Digital apps (Dime!, Kept, MAKE) may not offer QR payment at all; the runtime
+   probe hides them when they cannot receive an image.
+4. Bank package ids can change (as K PLUS did); re-verify on Play before trusting
+   a stale id.
+5. No instrumented UI tests; no emulator in CI.
 
 ## Things future agents must NOT repeat
 
-- Do not build a chooser fallback: `Intent.createChooser` must not exist in the
-  payment path (asserted by tests).
-- Do not treat "`queryIntentActivities` found nothing" as "the bank is not
-  installed" — installation and share-advertisement are separate states.
-- Do not clear the saved bank just because its package is missing; keep it to
-  display it, and gate use on `requiresBankSelection`.
-- Do not re-introduce a QR decoder, Accessibility automation, PIN/OTP handling,
-  or any automatic payment confirmation/retry.
-- Do not claim a build, APK or CI pass that was not observed.
+- Do not guess a package id or copy one from memory/blog. Verify on the live
+  Google Play listing and record the date.
+- Do not treat "package verified" as "share verified".
+- Do not report "not installed" from a failed `queryIntentActivities`; installed
+  and share-capable are separate states (`UNKNOWN` ≠ `NOT_INSTALLED`).
+- Do not scatter package strings outside `BankRegistry`.
+- Do not add a QR decoder, Accessibility automation, PIN/OTP handling, or any
+  automatic payment confirmation/retry.
+- Do not claim a build, APK, CI or device pass that was not observed.

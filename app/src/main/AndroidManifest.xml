@@ -21,11 +21,25 @@
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="image/*" />
         </intent>
-        <!-- Known Thai banking apps the app can hand QR images to. -->
-        <package android:name="com.kasikornbank.kplus" />
-        <package android:name="com.scb.BankApp" />
-        <package android:name="com.krungthai.nextbanking" />
-        <package android:name="com.bblmobilebanking" />
+        <!--
+          The verified financial apps from BankRegistry (Google Play package ids
+          checked on 2026-09-19). Listed individually on purpose: the app only
+          needs to see the specific apps it can hand a QR image to, not all
+          installed packages.
+        -->
+        <package android:name="com.kasikorn.retail.mbanking.wap" />
+        <package android:name="com.scb.phone" />
+        <package android:name="ktbcs.netbank" />
+        <package android:name="com.bbl.mobilebanking" />
+        <package android:name="com.krungsri.kma" />
+        <package android:name="com.TMBTOUCH.PRODUCTION" />
+        <package android:name="com.mobilife.gsb.mymo" />
+        <package android:name="com.cimbthai.digital.mycimb" />
+        <package android:name="com.uob.mightyth2" />
+        <package android:name="com.dimekkp.dimeapp" />
+        <package android:name="com.kasikornbank.makebykbank" />
+        <package android:name="com.krungsri.kept" />
+        <package android:name="th.co.truemoney.wallet" />
     </queries>
 
     <application

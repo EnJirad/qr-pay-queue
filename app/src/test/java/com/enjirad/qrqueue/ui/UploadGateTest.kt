@@ -18,13 +18,13 @@ class UploadGateTest {
 
     private fun readyStatus(bank: BankInfo = BankRegistry.K_PLUS) = BankTargetStatus(
         bank = bank,
-        availability = BankAvailability.READY,
+        availability = BankAvailability.SHARE_CAPABLE,
         advertised = true,
     )
 
     private fun installedNotAdvertised(bank: BankInfo = BankRegistry.K_PLUS) = BankTargetStatus(
         bank = bank,
-        availability = BankAvailability.INSTALLED_NOT_ADVERTISED,
+        availability = BankAvailability.INSTALLED_BUT_NOT_SHARE_CAPABLE,
         advertised = false,
     )
 

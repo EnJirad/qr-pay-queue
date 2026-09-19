@@ -370,7 +370,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
                     filePath = item.storedImagePath,
                     mimeType = item.mimeType,
                     fileName = item.displayName,
-                    targetPackage = bank.name,
+                    targetPackage = bank.packageName,
                 ),
             )
         }
