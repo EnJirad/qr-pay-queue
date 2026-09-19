@@ -93,9 +93,9 @@ data class QueueUiState(
     val canImport: Boolean
         get() = selectedBank != null && (bankStatus?.canHandOff == true)
 
-    /** True when a bank has been selected and the device says it is ready. */
+    /** True when the bank is installed and advertises image sharing. */
     val isBankReady: Boolean
-        get() = bankStatus?.canHandOff == true
+        get() = bankStatus?.advertised == true
 }
 
 /**
