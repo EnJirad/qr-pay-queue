@@ -9,6 +9,9 @@ import com.enjirad.qrqueue.domain.BankInfo
 import com.enjirad.qrqueue.domain.BankRegistry
 import com.enjirad.qrqueue.domain.BankShareReadiness
 import com.enjirad.qrqueue.domain.BankTargetStatus
+import com.enjirad.qrqueue.data.AppSettingsStore
+import com.enjirad.qrqueue.data.SharedPreferencesAppSettingsStore
+import com.enjirad.qrqueue.domain.HandPreference
 import com.enjirad.qrqueue.domain.ImportProgress
 import com.enjirad.qrqueue.domain.ImportSummary
 import com.enjirad.qrqueue.domain.PaymentQueue
@@ -41,6 +44,7 @@ enum class QueueNotice {
     BANK_UNINSTALLED,
     BANK_NOT_SHARE_CAPABLE,
     QR_REPLACEMENT_FAILED,
+    DAILY_DATA_CLEARED,
 }
 
 /**
@@ -97,12 +101,26 @@ data class QueueUiState(
     val notice: QueueNotice? = null,
 
     // ---- bank selection -----------------------------------------------------
-    /** The bank the user chose, or null on first install. */
     val selectedBank: BankInfo? = null,
-    /** The real runtime status of the selected bank (installed, advertised, etc). */
     val bankStatus: BankTargetStatus? = null,
-    /** True when the bank-selection dialog is visible. */
     val bankSelectionVisible: Boolean = false,
+
+    // ---- settings ----------------------------------------------------------
+    val handPreference: HandPreference = HandPreference.RIGHT,
+    val autoDailyReset: Boolean = false,
+    val settingsVisible: Boolean = false,
+
+    // ---- problem reasons ----------------------------------------------------
+    /** True when the problem-reasons bottom sheet is showing for an item. */
+    val problemReasonSheetVisible: Boolean = false,
+    /** The item that the user is reporting a problem for. */
+    val problemReasonItemId: String? = null,
+
+    // ---- clear item ---------------------------------------------------------
+    /** True when the clear-item confirmation dialog is visible. */
+    val clearItemConfirmationVisible: Boolean = false,
+    /** The item the user wants to delete from the Problem tab. */
+    val itemToClearId: String? = null,
 ) {
     /** True while the import screen must be shown instead of the queue. */
     val importing: Boolean get() = QueueImport.isImportRunning(importProgress)
@@ -162,12 +180,32 @@ data class QueueUiState(
 class QueueViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = QueueRepository(application)
+    private val settingsStore: AppSettingsStore = SharedPreferencesAppSettingsStore(application)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _uiState = MutableStateFlow(QueueUiState())
     val uiState: StateFlow<QueueUiState> = _uiState.asStateFlow()
 
     init {
+        // Load persisted settings.
+        val handPref = settingsStore.loadHandPreference()
+        val autoReset = settingsStore.loadAutoDailyReset()
+        _uiState.update {
+            it.copy(handPreference = handPref, autoDailyReset = autoReset)
+        }
+
+        // Lazy daily reset: check if a new day has started since the last reset.
+        val today = todayDateString()
+        val lastReset = settingsStore.loadLastResetDate()
+        if (autoReset && lastReset != null && today != lastReset) {
+            repository.clearDailyData()
+            settingsStore.saveLastResetDate(today)
+            _uiState.update { it.copy(notice = QueueNotice.DAILY_DATA_CLEARED) }
+        } else if (autoReset && lastReset == null) {
+            // First time auto-reset is on: record today so the next day triggers a reset.
+            settingsStore.saveLastResetDate(today)
+        }
+
         // Restore the previously selected bank and re-probe it on this device.
         val savedBank = repository.loadSelectedBank()
         if (savedBank != null) {
@@ -175,14 +213,11 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update {
                 it.copy(selectedBank = savedBank, bankStatus = status)
             }
-            // If the bank was uninstalled since the last session, notify the user
-            // immediately so the upload gate is disabled before they try to import.
             if (!status.canHandOff) {
                 _uiState.update { it.copy(notice = QueueNotice.BANK_UNINSTALLED) }
             }
         }
-        // Restore the queue. Anything that was mid hand-off becomes UNKNOWN and
-        // waits for the user; nothing is retried and nothing is marked paid.
+        // Restore the queue. Anything that was mid hand-off becomes UNKNOWN.
         val restored = repository.loadQueue()
         if (restored != null) {
             val resolved = restored.resolveInterrupted(
@@ -560,6 +595,92 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         persist(queue.markQrUnusable(itemId, QR_UNUSABLE_DETAIL, System.currentTimeMillis()))
     }
 
+    // ---- settings ----------------------------------------------------------
+
+    fun onSettingsRequested() {
+        _uiState.update { it.copy(settingsVisible = true) }
+    }
+
+    fun onSettingsDismissed() {
+        _uiState.update { it.copy(settingsVisible = false) }
+    }
+
+    fun onHandPreferenceChanged(pref: HandPreference) {
+        settingsStore.saveHandPreference(pref)
+        _uiState.update { it.copy(handPreference = pref) }
+    }
+
+    fun onAutoDailyResetChanged(enabled: Boolean) {
+        settingsStore.saveAutoDailyReset(enabled)
+        _uiState.update { it.copy(autoDailyReset = enabled) }
+        if (enabled) {
+            // Record today so the next day triggers a reset.
+            settingsStore.saveLastResetDate(todayDateString())
+        }
+    }
+
+    fun onManualDailyResetRequested() {
+        _uiState.update { it.copy(clearConfirmationVisible = true) }
+    }
+
+    // ---- problem reasons ----------------------------------------------------
+
+    fun onReportProblemRequested(itemId: String) {
+        _uiState.update {
+            it.copy(
+                problemReasonSheetVisible = true,
+                problemReasonItemId = itemId,
+            )
+        }
+    }
+
+    fun onProblemReasonDismissed() {
+        _uiState.update {
+            it.copy(problemReasonSheetVisible = false, problemReasonItemId = null)
+        }
+    }
+
+    fun onProblemReasonSelected(reason: String) {
+        val itemId = _uiState.value.problemReasonItemId ?: return
+        _uiState.update {
+            it.copy(problemReasonSheetVisible = false, problemReasonItemId = null)
+        }
+        val queue = _uiState.value.queue ?: return
+        val nowMillis = System.currentTimeMillis()
+        val updated = queue.reportProblem(itemId, reason, nowMillis)
+        persist(updated)
+    }
+
+    // ---- clear item ---------------------------------------------------------
+
+    fun onClearItemRequested(itemId: String) {
+        _uiState.update {
+            it.copy(clearItemConfirmationVisible = true, itemToClearId = itemId)
+        }
+    }
+
+    fun onClearItemDismissed() {
+        _uiState.update {
+            it.copy(clearItemConfirmationVisible = false, itemToClearId = null)
+        }
+    }
+
+    fun onClearItemConfirmed() {
+        val itemId = _uiState.value.itemToClearId ?: return
+        _uiState.update {
+            it.copy(clearItemConfirmationVisible = false, itemToClearId = null)
+        }
+        scope.launch {
+            withContext(Dispatchers.IO) { repository.deleteItem(itemId) }
+            val restored = repository.loadQueue()
+            if (restored != null) {
+                persist(restored.resolveInterrupted(INTERRUPTED_DETAIL, System.currentTimeMillis()))
+            } else {
+                _uiState.update { it.copy(queue = null) }
+            }
+        }
+    }
+
     // ---- housekeeping -------------------------------------------------------
 
     fun onClearQueueRequested() {
@@ -581,7 +702,10 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         scope.launch {
-            withContext(Dispatchers.IO) { repository.clearQueue() }
+            withContext(Dispatchers.IO) {
+                repository.clearDailyData()
+                settingsStore.saveLastResetDate(todayDateString())
+            }
             _uiState.update { it.copy(queue = null, notice = QueueNotice.QUEUE_CLEARED) }
         }
     }
@@ -627,6 +751,11 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         scope.launch {
             withContext(Dispatchers.IO) { repository.sweepOrphanImages(referenced) }
         }
+    }
+
+    private fun todayDateString(): String {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        return sdf.format(java.util.Date())
     }
 
     private companion object {

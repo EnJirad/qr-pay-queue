@@ -93,12 +93,15 @@ data class PaymentQueue(
 
     /**
      * The item Home should offer next, following the product's priority order:
-     * unresolved result, QR that must be replaced, reported failure, then the
+     * QR that must be replaced, unresolved result, reported failure, then the
      * next READY item — each within the original queue order.
+     *
+     * Items that are [PaymentStatus.isProblem] are excluded: problem items live
+     * in the Problem tab only, per the V0.6 one-handed redesign.
      */
     val nextActionItem: QueueItem?
         get() = items
-            .filter { item -> priorityRank(item.status) < IN_FLIGHT_RANK }
+            .filter { item -> !item.status.isProblem && priorityRank(item.status) < IN_FLIGHT_RANK }
             .minWithOrNull(compareBy({ item -> priorityRank(item.status) }, { item -> item.position }))
 
     /** True when no QR image with this content hash is already in the queue. */
@@ -346,6 +349,53 @@ data class PaymentQueue(
             }
         }
         return copy(items = resolved)
+    }
+
+    /**
+     * Reports a problem with the current item and moves it to the Problem tab.
+     * The item leaves the active queue; its status becomes
+     * [PaymentStatus.REQUIRES_QR_REPLACEMENT] and its [QueueItem.problemReason]
+     * is set so the Problem tab can display it.
+     */
+    fun reportProblem(
+        itemId: String,
+        reason: String,
+        nowMillis: Long = 0L,
+    ): PaymentQueue {
+        val index = items.indexOfFirst { item -> item.id == itemId }
+        val item = items.getOrNull(index) ?: return this
+        if (item.status.isCompleted) return this
+        // Mark the current QR as unusable and set the problem reason.
+        val version = item.currentVersion
+        return copy(
+            items = items.replacingAt(
+                index,
+                item.copy(
+                    status = PaymentStatus.REQUIRES_QR_REPLACEMENT,
+                    problemReason = reason,
+                    failureDetail = reason,
+                    updatedAt = nowMillis,
+                    versions = item.versions.map { existing ->
+                        if (version != null && existing.id == version.id) {
+                            existing.copy(status = QrVersionStatus.UNUSABLE)
+                        } else {
+                            existing
+                        }
+                    },
+                    attempts = item.attempts +
+                        paymentAttempt(item, version, PaymentAttemptResult.QR_UNUSABLE, reason, nowMillis),
+                ),
+            ),
+        )
+    }
+
+    /**
+     * Removes a Payment Item entirely: deletes it from the queue.
+     * The caller is responsible for deleting the item's QR image files.
+     */
+    fun clearItem(itemId: String): PaymentQueue {
+        val filtered = items.filter { item -> item.id != itemId }
+        return if (filtered.size == items.size) this else copy(items = filtered)
     }
 
     /** Items in queue order, with positions and QR versions repaired. */

@@ -194,6 +194,35 @@ class QueueRepository(
 
     fun clearSelectedBank() = bankSelection.clear()
 
+    // ---- daily reset -------------------------------------------------------
+
+    /**
+     * Deletes the entire queue and all imported image files — the daily
+     * operational data. Settings (bank, hand preference, auto-reset) are
+     * untouched. Returns the number of image files deleted.
+     */
+    fun clearDailyData(): Int {
+        val deleted = imageDirectory().let { dir ->
+            dir.listFiles()?.count { file -> file.isFile && file.delete() } ?: 0
+        }
+        stateFile().delete()
+        return deleted
+    }
+
+    /**
+     * Deletes a single Payment Item and all of its QR image versions.
+     * Gallery originals are never touched.
+     */
+    fun deleteItem(itemId: String) {
+        val queue = loadQueue() ?: return
+        val item = queue.item(itemId) ?: return
+        item.versions.forEach { version ->
+            storedFile(version.filePath)?.delete()
+        }
+        val updated = queue.clearItem(itemId)
+        saveQueue(updated)
+    }
+
     // ---- paths --------------------------------------------------------------
 
     private fun rootDirectory(): File = File(context.filesDir, ROOT_DIR)

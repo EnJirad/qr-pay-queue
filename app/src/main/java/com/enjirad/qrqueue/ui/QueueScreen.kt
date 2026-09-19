@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,9 +38,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
@@ -48,8 +51,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,6 +90,7 @@ import com.enjirad.qrqueue.domain.ImportSummary
 import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueItem
+import com.enjirad.qrqueue.domain.HandPreference
 import com.enjirad.qrqueue.ui.theme.QrQueueTheme
 import java.io.File
 import java.text.SimpleDateFormat
@@ -112,6 +118,17 @@ data class QueueCallbacks(
     val onBankSelected: (String) -> Unit,
     val onBankSelectionDismissed: () -> Unit,
     val onSelectTab: (QueueTab) -> Unit,
+    val onSettingsRequested: () -> Unit,
+    val onSettingsDismissed: () -> Unit,
+    val onHandPreferenceChanged: (HandPreference) -> Unit,
+    val onAutoDailyResetChanged: (Boolean) -> Unit,
+    val onManualDailyResetRequested: () -> Unit,
+    val onReportProblem: (String) -> Unit,
+    val onProblemReasonSelected: (String) -> Unit,
+    val onProblemReasonDismissed: () -> Unit,
+    val onClearItem: (String) -> Unit,
+    val onClearItemConfirmed: () -> Unit,
+    val onClearItemDismissed: () -> Unit,
 )
 
 /** Connects the screen to its ViewModel and to Android's photo picker. */
@@ -180,6 +197,17 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
             onBankSelected = viewModel::onBankSelected,
             onBankSelectionDismissed = viewModel::onBankSelectionDismissed,
             onSelectTab = viewModel::onTabSelected,
+            onSettingsRequested = viewModel::onSettingsRequested,
+            onSettingsDismissed = viewModel::onSettingsDismissed,
+            onHandPreferenceChanged = viewModel::onHandPreferenceChanged,
+            onAutoDailyResetChanged = viewModel::onAutoDailyResetChanged,
+            onManualDailyResetRequested = viewModel::onManualDailyResetRequested,
+            onReportProblem = viewModel::onReportProblemRequested,
+            onProblemReasonSelected = viewModel::onProblemReasonSelected,
+            onProblemReasonDismissed = viewModel::onProblemReasonDismissed,
+            onClearItem = viewModel::onClearItemRequested,
+            onClearItemConfirmed = viewModel::onClearItemConfirmed,
+            onClearItemDismissed = viewModel::onClearItemDismissed,
         ),
     )
 }
@@ -230,6 +258,7 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         QueueNotice.QUEUE_NOT_SAVED -> stringResource(R.string.notice_queue_not_saved)
         QueueNotice.QUEUE_CLEARED -> stringResource(R.string.notice_queue_cleared)
         QueueNotice.QR_REPLACEMENT_FAILED -> stringResource(R.string.notice_qr_replacement_failed)
+        QueueNotice.DAILY_DATA_CLEARED -> stringResource(R.string.notice_daily_data_cleared)
         null -> null
     }
 
@@ -255,6 +284,37 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         )
     }
 
+    if (state.settingsVisible) {
+        SettingsDialog(
+            handPreference = state.handPreference,
+            autoDailyReset = state.autoDailyReset,
+            selectedBank = state.selectedBank,
+            onHandPreferenceChanged = callbacks.onHandPreferenceChanged,
+            onAutoDailyResetChanged = callbacks.onAutoDailyResetChanged,
+            onManualDailyReset = callbacks.onManualDailyResetRequested,
+            onChangeBank = callbacks.onChangeBank,
+            onDismiss = callbacks.onSettingsDismissed,
+        )
+    }
+
+    if (state.problemReasonSheetVisible) {
+        ProblemReasonsSheet(
+            onReasonSelected = callbacks.onProblemReasonSelected,
+            onDismiss = callbacks.onProblemReasonDismissed,
+        )
+    }
+
+    if (state.clearItemConfirmationVisible) {
+        val itemLabel = state.itemToClearId?.let { id ->
+            state.queue?.item(id)?.itemLabel ?: id
+        } ?: ""
+        ClearItemDialog(
+            itemLabel = itemLabel,
+            onConfirm = callbacks.onClearItemConfirmed,
+            onDismiss = callbacks.onClearItemDismissed,
+        )
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -268,7 +328,7 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            AppHeader()
+            AppHeader(onSettingsRequested = callbacks.onSettingsRequested)
             when (state.selectedTab) {
                 QueueTab.HOME -> HomeTab(state = state, callbacks = callbacks)
                 QueueTab.PROBLEMS -> ProblemsTab(queue = state.queue, callbacks = callbacks)
@@ -325,7 +385,7 @@ private fun QueueBottomBar(state: QueueUiState, onSelectTab: (QueueTab) -> Unit)
 // ---- shell ------------------------------------------------------------------
 
 @Composable
-private fun AppHeader() {
+private fun AppHeader(onSettingsRequested: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary) {
             QrGlyph(
@@ -339,7 +399,21 @@ private fun AppHeader() {
         Text(
             text = stringResource(R.string.screen_title),
             style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.weight(1f),
         )
+        Surface(
+            onClick = onSettingsRequested,
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.size(36.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.action_settings),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxSize().wrapContentSize(),
+            )
+        }
     }
 }
 
@@ -1036,11 +1110,23 @@ private fun ProblemActions(item: QueueItem, callbacks: QueueCallbacks) {
                 }
             }
         }
-        TextButton(onClick = { callbacks.onViewItem(item.id) }) {
-            Text(
-                text = stringResource(R.string.action_view_image),
-                style = MaterialTheme.typography.bodySmall,
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            TextButton(onClick = { callbacks.onViewItem(item.id) }) {
+                Text(
+                    text = stringResource(R.string.action_view_image),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(onClick = { callbacks.onClearItem(item.id) }) {
+                Text(
+                    text = stringResource(R.string.action_clear_item),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }
@@ -1079,11 +1165,23 @@ private fun ReadyItemCard(item: QueueItem, selectedBank: BankInfo?, callbacks: Q
                 )
             }
             Spacer(Modifier.height(4.dp))
-            TextButton(onClick = { callbacks.onViewItem(item.id) }) {
-                Text(
-                    text = stringResource(R.string.action_view_image),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = { callbacks.onViewItem(item.id) }) {
+                    Text(
+                        text = stringResource(R.string.action_view_image),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                TextButton(onClick = { callbacks.onReportProblem(item.id) }) {
+                    Text(
+                        text = stringResource(R.string.action_report_problem),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
     }
@@ -1442,11 +1540,11 @@ private fun FinishedBanner(queue: PaymentQueue, onImportImages: () -> Unit) {
 private fun ClearQueueDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.clear_dialog_title)) },
-        text = { Text(text = stringResource(R.string.clear_dialog_body)) },
+        title = { Text(text = stringResource(R.string.clear_queue_title)) },
+        text = { Text(text = stringResource(R.string.clear_queue_body)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(text = stringResource(R.string.clear_dialog_confirm))
+                Text(text = stringResource(R.string.clear_queue_confirm))
             }
         },
         dismissButton = {
@@ -1530,6 +1628,191 @@ private fun qrGlyphModules(): List<Pair<Int, Int>> {
     )
 }
 
+// ---- settings dialog --------------------------------------------------------
+
+@Composable
+private fun SettingsDialog(
+    handPreference: HandPreference,
+    autoDailyReset: Boolean,
+    selectedBank: BankInfo?,
+    onHandPreferenceChanged: (HandPreference) -> Unit,
+    onAutoDailyResetChanged: (Boolean) -> Unit,
+    onManualDailyReset: () -> Unit,
+    onChangeBank: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.settings_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Hand preference
+                Text(
+                    text = stringResource(R.string.settings_hand_label),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    HandPreference.entries.forEach { pref ->
+                        val label = when (pref) {
+                            HandPreference.RIGHT -> stringResource(R.string.settings_hand_right)
+                            HandPreference.LEFT -> stringResource(R.string.settings_hand_left)
+                        }
+                        OutlinedButton(
+                            onClick = { onHandPreferenceChanged(pref) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (handPreference == pref) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                            ),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(text = label)
+                        }
+                    }
+                }
+                HorizontalDivider()
+                // Daily reset
+                Text(
+                    text = stringResource(R.string.settings_daily_reset_label),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = if (autoDailyReset) stringResource(R.string.settings_daily_reset_on) else stringResource(R.string.settings_daily_reset_off),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Switch(
+                        checked = autoDailyReset,
+                        onCheckedChange = onAutoDailyResetChanged,
+                    )
+                }
+                if (autoDailyReset) {
+                    Text(
+                        text = stringResource(R.string.settings_daily_reset_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+                OutlinedButton(
+                    onClick = onManualDailyReset,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(text = stringResource(R.string.settings_manual_reset))
+                }
+                HorizontalDivider()
+                // Bank
+                Text(
+                    text = stringResource(R.string.settings_bank_section),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = selectedBank?.displayName ?: stringResource(R.string.bank_not_selected),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    TextButton(onClick = onChangeBank) {
+                        Text(text = stringResource(R.string.settings_bank_change))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.action_dismiss))
+            }
+        },
+    )
+}
+
+// ---- problem reasons bottom sheet --------------------------------------------
+
+@Composable
+private fun ProblemReasonsSheet(
+    onReasonSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val reasons = listOf(
+        R.string.problem_reason_qr_unusable,
+        R.string.problem_reason_bank_rejected,
+        R.string.problem_reason_expired,
+        R.string.problem_reason_cannot_pay,
+        R.string.problem_reason_image_issue,
+        R.string.problem_reason_other,
+    )
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.problem_reason_title),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            reasons.forEach { reasonRes ->
+                val label = stringResource(reasonRes)
+                Surface(
+                    onClick = { onReasonSelected(label) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+// ---- clear item confirmation ------------------------------------------------
+
+@Composable
+private fun ClearItemDialog(
+    itemLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.clear_item_title)) },
+        text = { Text(text = stringResource(R.string.clear_item_body, itemLabel)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(R.string.clear_item_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
 private fun QueueScreenEmptyPreview() {
@@ -1559,4 +1842,15 @@ private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onBankSelected = {},
     onBankSelectionDismissed = {},
     onSelectTab = {},
+    onSettingsRequested = {},
+    onSettingsDismissed = {},
+    onHandPreferenceChanged = {},
+    onAutoDailyResetChanged = {},
+    onManualDailyResetRequested = {},
+    onReportProblem = {},
+    onProblemReasonSelected = {},
+    onProblemReasonDismissed = {},
+    onClearItem = {},
+    onClearItemConfirmed = {},
+    onClearItemDismissed = {},
 )

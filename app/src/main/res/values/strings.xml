@@ -4,27 +4,34 @@
     <string name="screen_title">QR Payment Queue</string>
     <string name="screen_subtitle">เลือกธนาคาร จัดคิวภาพ QR ส่งให้ธนาคารที่เลือกทีละรูป</string>
     <string name="screen_description">เลือกธนาคารสำหรับชำระเงินก่อน แล้วเลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
-    <string name="version_chip">v0.5.0 · payment queue + problem tab</string>
+    <string name="version_chip">v0.6.0 · one-handed UX + daily reset</string>
 
     <!-- tabs -->
     <string name="tab_home">หน้าแรก</string>
     <string name="tab_problems">ปัญหา</string>
     <string name="tab_completed">ชำระแล้ว</string>
+    <string name="tab_settings">ตั้งค่า</string>
 
     <!-- home -->
+    <string name="home_today">วันนี้</string>
+    <string name="home_remaining">เหลือ %1$d รายการ</string>
+    <string name="home_empty_title">ยังไม่มี QR</string>
+    <string name="home_empty_body">เพิ่มรูป QR เพื่อเริ่มต้น รูปจะถูกคัดลอกเข้าแอป และรูปต้นฉบับในคลังภาพจะไม่ถูกแก้ไข</string>
+    <string name="home_all_done">วันนี้ชำระครบแล้ว</string>
+    <string name="home_all_done_body">ทุกรายการได้รับการยืนยันแล้ว</string>
+    <string name="home_current_item">รายการปัจจุบัน</string>
     <string name="home_attention_title">ต้องจัดการ</string>
     <string name="home_ready_title">พร้อมชำระ</string>
     <string name="home_remaining_title">คิวที่เหลือ</string>
-    <string name="home_empty_title">ยังไม่มี QR</string>
-    <string name="home_empty_body">เพิ่มรูป QR เพื่อเริ่มต้น รูปจะถูกคัดลอกเข้าแอป และรูปต้นฉบับในคลังภาพจะไม่ถูกแก้ไข</string>
     <string name="queue_badge_count">%1$d รายการ</string>
 
     <string name="action_import">+ เพิ่ม QR</string>
     <string name="action_import_hint">เลือกได้หลายรูปพร้อมกัน ระบบจะนำเข้ารูปทั้งหมดแล้วกลับมาหน้าแรกอัตโนมัติ</string>
     <string name="action_import_disabled_hint">กรุณาเลือกธนาคารก่อน จึงจะเพิ่มรูป QR ได้</string>
-    <string name="action_clear_queue">ล้างคิว</string>
+    <string name="action_clear_queue">ล้างข้อมูลของวันนี้</string>
     <string name="action_cancel">ยกเลิก</string>
     <string name="action_dismiss">ปิด</string>
+    <string name="action_settings">ตั้งค่า</string>
 
     <!-- bank selection -->
     <string name="bank_section_title">ธนาคารสำหรับชำระเงิน</string>
@@ -32,7 +39,6 @@
     <string name="bank_not_selected_hint">กรุณาเลือกธนาคารก่อนเพิ่มรูป QR</string>
     <string name="bank_ready">ติดตั้งแล้ว · ส่งรูป QR ได้</string>
     <string name="bank_status_unknown">ไม่สามารถตรวจสอบสถานะแอปนี้ได้</string>
-    <!-- Used when a bank name must be shown but none is resolved (e.g. the selected bank was uninstalled). -->
     <string name="bank_generic">แอปธนาคารที่เลือก</string>
     <string name="bank_not_found">ไม่พบแอปธนาคารในเครื่อง</string>
     <string name="bank_installed_not_advertised">ติดตั้งแล้ว แต่ไม่พบกิจกรรมที่รับรูป QR โดยตรง</string>
@@ -59,11 +65,22 @@
     <string name="action_keep_waiting">ยังไม่แน่ใจ</string>
     <string name="action_mark_qr_unusable">QR ใช้งานไม่ได้</string>
     <string name="action_replace_qr">เปลี่ยน QR</string>
+    <string name="action_report_problem">มีปัญหา</string>
+    <string name="action_clear_item">ล้างรายการ</string>
 
     <!-- user confirmation -->
     <string name="confirm_section_title">ตรวจสอบรายการ</string>
     <string name="confirm_question">คุณกลับมาจากแอปธนาคารแล้ว</string>
     <string name="confirm_body">กรุณาตรวจสอบผลการทำรายการใน %1$s ก่อน การกลับมาที่แอปนี้ไม่ถือว่าจ่ายเงินสำเร็จ และแอปจะไม่ปิดรายการให้อัตโนมัติ</string>
+
+    <!-- problem reasons -->
+    <string name="problem_reason_title">เลือกสาเหตุที่ QR มีปัญหา</string>
+    <string name="problem_reason_qr_unusable">QR ใช้งานไม่ได้</string>
+    <string name="problem_reason_bank_rejected">ธนาคารแจ้งว่า QR ไม่ถูกต้อง</string>
+    <string name="problem_reason_expired">QR หมดอายุ</string>
+    <string name="problem_reason_cannot_pay">จ่ายไม่ได้</string>
+    <string name="problem_reason_image_issue">รูปภาพมีปัญหา</string>
+    <string name="problem_reason_other">อื่น ๆ</string>
 
     <!-- problems -->
     <string name="problems_title">รายการที่มีปัญหา</string>
@@ -72,12 +89,18 @@
     <string name="problem_unknown_note">การชำระเงินอาจเกิดขึ้นแล้ว กรุณาตรวจสอบในแอปธนาคารก่อน ระบบจะไม่ส่งซ้ำให้เอง</string>
     <string name="problem_qr_unusable_note">QR นี้ใช้งานไม่ได้ รายการยังอยู่ในคิว กรุณาเปลี่ยน QR ใหม่</string>
     <string name="problem_failed_note">แอปนี้ไม่สามารถส่งรูปไปยังธนาคารได้ รายการนี้ยังไม่ถึงธนาคาร</string>
+    <string name="problem_reason_label">สาเหตุ: %1$s</string>
+
+    <!-- clear item -->
+    <string name="clear_item_title">ล้างรายการนี้?</string>
+    <string name="clear_item_body">ระบบจะลบรายการ %1$s และรูป QR ทั้งหมดของรายการนี้ออก ไม่สามารถย้อนกลับได้</string>
+    <string name="clear_item_confirm">ล้างรายการ</string>
 
     <!-- completed -->
     <string name="completed_title">ชำระแล้ว</string>
     <string name="completed_count">ยืนยันโดยคุณแล้ว %1$d รายการ</string>
     <string name="completed_empty_title">ยังไม่มีรายการที่ชำระแล้ว</string>
-    <string name="completed_empty_body">รายการจะมาอยู่ที่นี่หลังคุณกด "ทำรายการเสร็จแล้ว" เท่านั้น</string>
+    <string name="completed_empty_body">รายการจะมาอยู่ที่นี่หลังคุณกด \"ทำรายการเสร็จแล้ว\" เท่านั้น</string>
     <string name="completed_by_user">คุณยืนยันว่าชำระแล้ว</string>
 
     <!-- finished -->
@@ -95,10 +118,26 @@
     <string name="import_summary_duplicates">↷ ข้ามรายการซ้ำ %1$d รายการ</string>
     <string name="import_summary_failed">⚠️ %1$d รายการไม่สำเร็จ</string>
 
+    <!-- settings -->
+    <string name="settings_title">ตั้งค่า</string>
+    <string name="settings_hand_label">ถนัดมือ</string>
+    <string name="settings_hand_right">ถนัดขวา</string>
+    <string name="settings_hand_left">ถนัดซ้าย</string>
+    <string name="settings_daily_reset_label">ล้างข้อมูลอัตโนมัติ</string>
+    <string name="settings_daily_reset_on">เปิด</string>
+    <string name="settings_daily_reset_off">ปิด</string>
+    <string name="settings_daily_reset_desc">ระบบจะล้างข้อมูล QR ของวันก่อนหน้าโดยอัตโนมัติเมื่อเข้าสู่วันใหม่</string>
+    <string name="settings_manual_reset">ล้างข้อมูลของวันนี้</string>
+    <string name="settings_manual_reset_desc">QR และรายการที่ยังไม่เสร็จจะถูกลบออกจากรายการวันนี้</string>
+    <string name="settings_bank_section">ธนาคาร</string>
+    <string name="settings_bank_current">ธนาคารที่เลือก: %1$s</string>
+    <string name="settings_bank_change">เปลี่ยนธนาคาร</string>
+    <string name="settings_version">เวอร์ชัน %1$s</string>
+
     <!-- dialogs -->
-    <string name="clear_dialog_title">ล้างคิวนี้?</string>
-    <string name="clear_dialog_body">ระบบจะลบคิวและสำเนารูปที่แอปนำเข้าไว้ รวมถึงประวัติ QR ของแต่ละรายการ รูปต้นฉบับในคลังภาพของคุณจะไม่ถูกแตะต้อง</string>
-    <string name="clear_dialog_confirm">ล้างคิว</string>
+    <string name="clear_queue_title">ล้างข้อมูลของวันนี้?</string>
+    <string name="clear_queue_body">QR และรายการที่ยังไม่เสร็จจะถูกลบออกจากรายการวันนี้ รูปต้นฉบับในคลังภาพของคุณจะไม่ถูกแตะต้อง</string>
+    <string name="clear_queue_confirm">ล้างข้อมูล</string>
 
     <!-- notices -->
     <string name="notice_share_target_unavailable">ไม่สามารถเปิดธนาคารที่เลือกได้ กรุณาตรวจสอบว่าแอปธนาคารยังติดตั้งอยู่และรองรับการรับรูป QR</string>
@@ -109,8 +148,10 @@
     <string name="notice_view_target_unavailable">ไม่มีแอปใดเปิดรูปนี้ได้</string>
     <string name="notice_image_missing">ไม่พบไฟล์รูปที่นำเข้าไว้ในเครื่อง จึงส่งรูปนี้ไม่ได้</string>
     <string name="notice_queue_not_saved">บันทึกการเปลี่ยนแปลงลงเครื่องไม่สำเร็จ ตรวจสอบพื้นที่ว่างของคุณ ผลล่าสุดอาจไม่ถูกเก็บไว้</string>
-    <string name="notice_queue_cleared">ล้างคิวแล้ว</string>
+    <string name="notice_queue_cleared">ล้างข้อมูลแล้ว</string>
     <string name="notice_qr_replacement_failed">เปลี่ยน QR ไม่สำเร็จ QR เดิมของรายการนี้ยังอยู่เหมือนเดิม</string>
+    <string name="notice_daily_data_cleared">ล้างข้อมูลประจำวันแล้ว</string>
+    <string name="notice_item_cleared">ล้างรายการแล้ว</string>
 
     <!-- safety -->
     <string name="safety_title">คุณเป็นผู้ควบคุมทุกการชำระเงิน</string>

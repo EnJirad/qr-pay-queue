@@ -23,6 +23,8 @@ package com.enjirad.qrqueue.domain
  * @param lastAttemptAt when a payment attempt last started, or null.
  * @param failureDetail a short diagnostic shown for problem states. It is never
  *   payment data and is never read from the image.
+ * @param problemReason the user-selected reason when reporting a problem
+ *   (e.g. "QR ใช้งานไม่ได้", "QR หมดอายุ"). Shown on the Problem tab.
  * @param versions the QR image versions of this item, oldest first. Exactly one
  *   is CURRENT.
  * @param attempts this app's own payment-attempt records, oldest first.
@@ -36,6 +38,7 @@ data class QueueItem(
     val completedAt: Long? = null,
     val lastAttemptAt: Long? = null,
     val failureDetail: String? = null,
+    val problemReason: String? = null,
     val versions: List<QrVersion> = emptyList(),
     val attempts: List<PaymentAttempt> = emptyList(),
 ) {
