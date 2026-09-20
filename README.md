@@ -456,9 +456,12 @@ test, lint run or build fails the workflow.
 
 ## Verification status
 
-- The last **green** CI run is `35484704958` (commit `57426ea`, V0.9.1): 236 unit
-  tests, `lintDebug` and `assembleDebug` pass, APK 9.4M, artifact
-  `qr-payment-queue-v0.9.1-debug`.
+- The last **green** CI run is `35489171427` (commit `f539094`, the V0.9.3 rail and
+  ปัญหา change): `testDebugUnitTest`, `lintDebug` and `assembleDebug` pass, APK 9.4M
+  (`classes.dex` 18,137,284 bytes), artifact `qr-payment-queue-v0.9.1-debug`.
+- The first V0.9.3 commit (`e001df0`) was **red** on a genuine Kotlin compile error —
+  a `when` branch body is a block, so the action mapping could not yield a lambda —
+  and is fixed at its cause by `f539094` rather than hidden.
 - Earlier V0.6 commits were red. Run `35455677419` (commit `ba3005f`) failed
   `testDebugUnitTest` with three failures:
   `PaymentQueueTest.homeOffersUnresolvedResultsBeforeAnythingElse`,
@@ -468,11 +471,12 @@ test, lint run or build fails the workflow.
   confirms it.
 - Green CI means compile, unit test, lint and APK packaging only: no screen of
   this app has ever been rendered, so it is not a device pass.
-- The test suite is 236 test methods across 20 classes (state machine, the V0.9
+- The test suite is 269 test methods across 22 classes (state machine, the V0.9
   launch-failure contract, badge, QR replacement and QR-version history, duplicate
   skipping, double-payment protection, direct-share contract, persistence, upload
-  gate, fallback, settings, daily reset, the home layout model/codec, and which
-  actions each action state can place in Edit mode).
+  gate, fallback, settings, daily reset, the home layout model/codec, which actions
+  each action state can place in Edit mode, the rail's fixed action order, and the
+  per-status recovery actions of the ปัญหา tab with their clear-item confirmation).
 - V0.9 changes the payment hand-off and adds the home layout: an item is put into
   `AWAITING_USER_CONFIRMATION` before the bank app is launched, so the four
   actions appear immediately and a failed launch keeps them (it is recorded as an
@@ -513,6 +517,7 @@ test, lint run or build fails the workflow.
 | V0.7.0 (0.7.0) | Fixed-position control panel, screen lock, one-tap problem flow | delivered |
 | V0.8.0 (0.8.0) | 4-action one-handed payment flow with retry re-share | delivered |
 | V0.9.0 (0.9.0) | Immediate four-action hand-off (the launch never decides the rail) + home layout Edit mode (drag, hide/show, QR-image offset, reset) | delivered |
-| **V0.9.1 (0.9.1)** | **Edit mode places the actions of both action states at once (no state change before an action can be moved)** | **CI green, device test pending** |
+| V0.9.1 (0.9.1) | Edit mode places the actions of both action states at once (no state change before an action can be moved) | delivered |
+| **V0.9.3 (0.9.1)** | **Home's four answers ordered รายงานปัญหา → ยืนยันสำเร็จ → ไม่ทราบผล → ลองใหม่, a reported item leaving Home entirely, and an action area per problem item (resend / change QR / status-specific / clear with confirmation)** | **CI green, device test pending** |
 | V1.0 | Optional verified reconciliation with official bank API | planned |
 | — | Real-device verification of the tabs, the one-handed layout and the share flow | not yet done |

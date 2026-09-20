@@ -1,4 +1,4 @@
-# Real-device test report — V0.9.1 hand-off rail, active QR area, Edit mode
+# Real-device test report — V0.9.3 rail order and ปัญหา actions (on V0.9.1 hand-off rail, active QR area, Edit mode)
 
 ## Status
 
@@ -9,13 +9,15 @@
 > **no screen of this app has ever been rendered outside a build**, and no bank
 > hand-off has been observed. Nothing in this repository claims otherwise.
 >
-> The last **green** CI run is the V0.9.1 build (`57426ea`, run `35484704958`),
-> whose artifact is `qr-payment-queue-v0.9.1-debug` (APK 9.4M) — that is the one
-> to install for this checklist. It runs 236 unit tests, `lintDebug` and
-> `assembleDebug`, and nothing more.
-> Do not test against a stale artifact and record the result as a V0.9 pass: the
-> V0.9 hand-off behaviour and the Edit mode only exist in `f0d6daa` or later, and
-> placing the actions of both action states only exists in `57426ea` or later.
+> The last **green** CI run is `35489171427` (commit `f539094`, V0.9.3), whose
+> artifact is `qr-payment-queue-v0.9.1-debug` (APK 9.4M) — that is the one to
+> install for this checklist. It runs `testDebugUnitTest` (269 `@Test` methods),
+> `lintDebug` and `assembleDebug`, and nothing more.
+> Do not test against a stale artifact and record the result as a current pass: the
+> V0.9 hand-off behaviour and the Edit mode only exist in `f0d6daa` or later,
+> placing the actions of both action states only exists in `57426ea` or later, and
+> the rail order and the ปัญหา action area (steps 60–67) only exist in `e001df0` /
+> `f539094` or later.
 
 ## Required checklist (Xiaomi 15T Pro / Android 16) — 20 steps
 
@@ -63,9 +65,12 @@ None of these has been run.
 
 | Claim | Evidence |
 | --- | --- |
-| APK builds | **V0.9.0**: run `35483100157` (commit `f0d6daa`) `assembleDebug` PASS, APK 9.4M, artifact `qr-payment-queue-v0.9.0-debug` |
-| Unit tests pass | **V0.9.0**: same run, 230 test methods across 20 classes, 0 failures |
-| Lint passes | **V0.9.0**: same run, `lintDebug` PASS (`abortOnError = true`) |
+| APK builds | **V0.9.3**: run `35489171427` (commit `f539094`) `assembleDebug` PASS, APK 9.4M, `classes.dex` 18,137,284 B, artifact `qr-payment-queue-v0.9.1-debug` |
+| Unit tests pass | **V0.9.3**: same run, 269 test methods across 22 classes (`grep -c "@Test"`), 0 failures |
+| Lint passes | **V0.9.3**: same run, `lintDebug` PASS (`abortOnError = true`) |
+| The rail's action order | `HomeEditModeTest` (17): the four payment answers are asserted as the ordered list the rail draws (⚠ → ✓ → ? → ↻), in normal and Edit mode |
+| The ปัญหา tab's actions | `ProblemActionTest` (14) and `ProblemTabActionsTest` (9): per-status action sets, each action driven through the real domain transition, and no action offered where the domain refuses it |
+| Clearing always asks first | `ProblemTabActionsTest`: `clearingItem` sets the confirmation and leaves the queue object itself untouched (`assertSame`); `clearItemDismissed` keeps the item |
 | State machine (all valid/invalid transitions) | `PaymentQueueTest` (25 methods) |
 | Only user confirmation completes an item | `PaymentConfirmationTest` (10 methods) |
 | Double-payment protection | `DoublePaymentTest` (8 methods): one attempt per tap burst, one hand-off at a time |

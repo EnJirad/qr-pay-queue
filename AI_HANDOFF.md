@@ -31,17 +31,23 @@ problem flow, screen lock, hand selector, lazy daily reset.
 
 ## CI status right now (read this first)
 
-**The last GREEN run was `35487356518` (`4c6dfae`, observed 2026-09-20): 242 unit
-tests, `lintDebug`, `assembleDebug`, APK, artifact `qr-payment-queue-v0.9.1-debug`.**
+**`f539094` GREEN (run `35489171427`, observed 2026-09-20): `testDebugUnitTest`
+(269 `@Test` methods), `lintDebug` (with `abortOnError = true`), `assembleDebug`,
+APK 9.4M, artifact `qr-payment-queue-v0.9.1-debug`.** Everything pushed to `main`
+is compiled, unit-tested, linted and packaged; the V0.9.3, V0.9.2 and V0.9.1
+sections below are what that run contains (on top of the V0.8 base the repository
+owner commits itself).
 
 This environment has **no JDK and no Android SDK** (`java -version` → `java: not
 found`), so `./gradlew` cannot run here at all. Nothing in this file claims a local
-build. The V0.9.3 row in the table below is filled in from the GitHub Actions run
-of the commit it names — if that row is missing, the V0.9.3 change is **unverified**
-and must not be described as passing.
+build: every result below comes from the GitHub Actions log of the run named next
+to it. The first V0.9.3 commit went red on a real compiler error and is listed
+rather than quietly dropped.
 
 | Commit | Run | Result |
 | --- | --- | --- |
+| `f539094` fix: build the problem action's click as one lambda | `35489171427` | **GREEN** — `testDebugUnitTest`, `lintDebug`, `assembleDebug`, APK 9.4M, artifact `qr-payment-queue-v0.9.1-debug` (V0.9.3) |
+| `e001df0` feat: order the home rail and make the problems tab an action area | `35489029693` | RED — compile error in `ProblemActionButton`: a `when` branch body is a block, so the action mapping could not yield a lambda (`Initializer type mismatch: expected Function0<Unit>, actual Any`) |
 | `4c6dfae` test: a refused hand-off keeps the ready item as the next action | `35487356518` | **GREEN** — 242 unit tests, `lintDebug`, `assembleDebug`, APK (V0.9.2 tab separation) |
 | `07d2993` test: align hand-off and completion expectations with the domain rules | `35487158437` | RED — 1 unit test failure (my own `assertNull(nextActionItem)` after a *refused* hand-off; the READY item correctly stays offered) |
 | `1ec97b2` fix: scope the finished summary's weight inside its Row | `35486632448` | RED — 2 unit test failures (`awaitingAnswerItem` with an UNKNOWN in the queue; `itemCount` after completion) |
