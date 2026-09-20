@@ -204,11 +204,22 @@ class PaymentQueueTest {
         assertFalse(failedLaunch.canStartHandoff("b"))
         assertFalse(failedLaunch.finished)
 
-        // ↻ retries the same Payment Item with the same QR version.
-        val retried = failedLaunch.retryShare("a", 40L)
-        assertEquals(PaymentStatus.AWAITING_USER_CONFIRMATION, retried.item("a")?.status)
-        assertEquals("a", retried.item("a")?.id)
-        assertEquals(1, retried.item("a")!!.versions.size)
+        // ↻ retries the same Payment Item with the same QR version: the hand-off
+        // starts again (a fresh attempt) and the item owns the user's answer once
+        // more — the same two transitions the ViewModel runs on a tap.
+        val retrying = failedLaunch.retryShare("a", 40L)
+        assertEquals(PaymentStatus.SHARING, retrying.item("a")?.status)
+
+        val awaitingAgain = retrying.shareLaunched("a", 41L)
+        assertEquals(
+            PaymentStatus.AWAITING_USER_CONFIRMATION,
+            awaitingAgain.item("a")?.status,
+        )
+        assertEquals("a", awaitingAgain.item("a")?.id)
+        assertEquals(1, awaitingAgain.item("a")!!.versions.size)
+        assertEquals(0, awaitingAgain.completedCount)
+        assertEquals(0, awaitingAgain.problemCount)
+        assertFalse(awaitingAgain.finished)
     }
 
     @Test
