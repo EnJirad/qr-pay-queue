@@ -1375,7 +1375,11 @@ private fun ActionRail(
     callbacks: QueueCallbacks,
 ) {
     Column(
-        modifier = Modifier.width(80.dp).height(300.dp),
+        // Edit mode plots every action of both states at once, so the rail is taller
+        // there: five actions must not overlap the QR area next to them.
+        modifier = Modifier
+            .width(80.dp)
+            .height(if (editMode) 392.dp else 300.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1492,6 +1496,18 @@ private fun ActionRail(
                     )
                 }
             }
+        }
+
+        // V0.9.1 §5–§7: Edit mode must not depend on the item's state. Every action
+        // this state does not show is drawn here as a draggable placeholder, so all
+        // of them can be placed without handing a QR over (or resolving a problem)
+        // first. They are placeholders only: their actions are never wired up.
+        if (editMode) {
+            GhostRailActions(
+                item = item,
+                layout = layout,
+                onElementMoved = onElementMoved,
+            )
         }
     }
 }

@@ -16,13 +16,16 @@ private bank API, no QR decoder, no automatic payment confirmation.
 
 ## Current version
 
-**0.9.0 (versionCode 11)** — the hand-off now enters AWAITING_USER_CONFIRMATION
-*before* the bank app is launched (the four actions appear immediately and no
-launch result can remove them), Home keeps one active QR area with the rest of
-the queue listed below it, and Home has an Edit mode (drag & drop placement,
-per-element show/hide, QR-image offset inside its frame, reset layout — all
-persisted). Plus everything from V0.8: fixed-position control panel, one-tap
-problem flow, screen lock, hand selector, lazy daily reset.
+**0.9.1 (versionCode 12)** — Edit mode can now place the actions of **both**
+action states at once (a ready item's four answers, and an awaiting item's scan
+action, are draggable without changing the item's state first), on top of V0.9.0:
+the hand-off enters AWAITING_USER_CONFIRMATION *before* the bank app is launched
+(the four actions appear immediately and no launch result can remove them), Home
+keeps one active QR area with the rest of the queue listed below it, and Home has
+an Edit mode (touch-and-drag placement, per-element show/hide, QR-image offset
+inside its frame, reset layout — all persisted). Plus everything from V0.8:
+fixed-position control panel, one-tap problem flow, screen lock, hand selector,
+lazy daily reset.
 
 ## CI status right now (read this first)
 
@@ -62,7 +65,55 @@ All three were fixed at their cause by `6f4a032` (below) and CI has confirmed it
 That run proves **compile + unit test + lint + APK packaging only** — no screen of
 this app has still ever been rendered, so nothing here is a device pass.
 
-## Latest change: V0.9 — QR hand-off flow + home layout Edit mode
+## Latest change: V0.9.1 — Edit mode places both action states at once
+
+### What was actually wrong (root cause, not a workaround)
+
+`QueueScreen.ActionRail` is **status-driven**: one `when` that draws exactly the
+item's own actions — `READY` → the scan action, `SHARING`/`AWAITING` → ✓ ⚠ ? ↻, a
+problem status → the action that resolves it. Edit mode only wrapped *whatever
+that state happened to render* in `HomeElementBox`, so:
+
+- with a `READY` item the four answers were **not in the composition at all** and
+  could not be dragged — the QR had to be handed to the bank first,
+- with an awaiting item the scan action was not in the composition either,
+- with a problem item only the resolving action could be moved.
+
+There was never a "tap the element, then drag a handle" step — `HomeElementBox`
+has always dragged on touch-and-hold with `detectDragGestures` + `consume()` — but
+the *set of placeable elements* depended on the item's state, which is exactly
+what the request forbids. So the fix is in that set, not in the gesture.
+
+### The fix
+
+The set of elements is now a function of the status **and** the mode, decided in
+the model: `HomeElement.railElements(status, editMode)` plus
+`HomeElement.ACTION_ELEMENTS` (`domain/HomeLayout.kt`). Normal mode returns the
+item's own actions, unchanged; Edit mode always returns all five.
+
+`GhostRailActions` (`ui/HomeLayoutUi.kt`) draws the actions the current state does
+not show: dimmed to 35%, at the size of the real action (72 dp for the scan
+action, 64 dp for the answers, so the position the user picks is where the real
+action lands), with the element's name as its `contentDescription`, and **no
+action wired to it** — a tap or a drag there can never pay, confirm, report,
+retry or open the photo picker. The rail is 392 dp tall in Edit mode (300 dp
+otherwise) so five actions never overlap the QR area next to them.
+
+A placement belongs to the **element**, not to the state it was made in (the
+offsets live in `HomeLayoutConfig.elements`), so what the user arranges while an
+item is ready is exactly where those actions sit once it is awaiting: one layout,
+no per-state copy.
+
+### Tests
+
+`HomeEditModeTest` (+5, now 12): a ready item can place the scan action and every
+answer; an awaiting (and a handing-off) item can place its four answers and the
+scan action; every problem status keeps its resolving action while still placing
+all five; a completed item has no action left but still places all five; no
+placeable action can be hidden even by a hand-written preference; and an offset
+belongs to the element rather than to the state.
+
+## Previous change: V0.9 — QR hand-off flow + home layout Edit mode
 
 ### 1. The four actions no longer depend on the launch (§1 of the request)
 

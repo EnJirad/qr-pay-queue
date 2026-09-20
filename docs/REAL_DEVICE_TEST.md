@@ -1,4 +1,4 @@
-# Real-device test report — V0.9.0 hand-off rail, active QR area, Edit mode
+# Real-device test report — V0.9.1 hand-off rail, active QR area, Edit mode
 
 ## Status
 
@@ -85,9 +85,9 @@ None of these has been run.
 | Device model | Xiaomi 15T Pro (target) |
 | Android version | Android 16 (target) |
 | Bank app versions | _to be filled in_ |
-| App version | 0.9.0 (versionCode 11) |
+| App version | 0.9.1 (versionCode 12) |
 | Build under test | commit hash of the tested build |
-| APK source | GitHub Actions artifact `qr-payment-queue-v0.9.0-debug` |
+| APK source | GitHub Actions artifact `qr-payment-queue-v0.9.1-debug` |
 | Test date | _to be filled in_ |
 | Tester | _to be filled in_ |
 
@@ -277,6 +277,16 @@ All of these are **NOT RUN**: the behaviour they check was written without a dev
 | 52 | Tap **🔒** while in Edit mode | Edit mode closes and nothing can be dragged; tapping **✎** while locked reports that Home is locked instead of opening Edit mode | NOT RUN |
 | 53 | In Edit mode, drag the add-QR button, then leave Edit mode and tap it | It is still the normal **+ เพิ่มรูป QR** action (the picker opens) | NOT RUN |
 | 54 | Switch ถนัดมือ to ถนัดซ้าย and repeat one drag | The rest of Home mirrors for the left hand, and your own placement is kept (a saved layout wins over the default hand placement) | NOT RUN |
+
+### D. Both action states are placeable (V0.9.1)
+
+| # | Step | Expected | Status |
+| --- | --- | --- | --- |
+| 55 | With a **ready** item, enter Edit mode and drag the scan action **without** paying first | It moves straight away; no hand-off starts, no bank app opens | NOT RUN |
+| 56 | With the same ready item, look at the rail in Edit mode | The four answers (✓ ⚠ ? ↻) are on the rail as dimmed placeholders and can be dragged — no need to hand the QR to the bank first | NOT RUN |
+| 57 | With an **awaiting** item, enter Edit mode | The scan action is now the dimmed placeholder and can be dragged; the four real answers still work outside Edit mode | NOT RUN |
+| 58 | Drag the answers into place while the item is ready, then hand the QR over and come back | The four answers sit exactly where you left them (one layout, not one per state) | NOT RUN |
+| 59 | In Edit mode, tap a dimmed placeholder | Nothing happens: no payment, no problem report, no retry, no photo picker | NOT RUN |
 
 ## Evidence to attach
 

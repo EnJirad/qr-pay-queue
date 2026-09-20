@@ -39,6 +39,53 @@ enum class HomeElement(val hideable: Boolean) {
 
     /** The "x / y confirmed" caption. */
     PROGRESS(hideable = true),
+    ;
+
+    companion object {
+        /**
+         * Every action element the rail can show, in the order the product fixes:
+         * the share action, then ✓ ⚠ ? ↻.
+         *
+         * Edit mode plots all of them at once (see [railElements]): the user must
+         * never have to change an item's state — or hand a QR to the bank, or
+         * resolve a problem — just to be able to move one of its actions.
+         */
+        val ACTION_ELEMENTS: List<HomeElement> = listOf(
+            SCAN_ACTION,
+            CONFIRM_ACTION,
+            WARNING_ACTION,
+            UNKNOWN_ACTION,
+            RETRY_ACTION,
+        )
+
+        /**
+         * The action elements the rail draws for [status].
+         *
+         * In normal mode this is the item's own action set and nothing more:
+         * `READY` offers the share action, an item the bank already holds offers
+         * the four answers, and a problem item offers the action that resolves it.
+         *
+         * In edit mode it is always [ACTION_ELEMENTS], so both action states can be
+         * arranged without touching the item first. A placement belongs to the
+         * element, not to the state it was made in, so a position set while the item
+         * was ready is exactly where that action sits once it is awaiting.
+         */
+        fun railElements(status: PaymentStatus, editMode: Boolean): List<HomeElement> =
+            if (editMode) ACTION_ELEMENTS else normalRailElements(status)
+
+        /** The item's own action set: what the rail shows outside Edit mode. */
+        private fun normalRailElements(status: PaymentStatus): List<HomeElement> = when {
+            status == PaymentStatus.READY -> listOf(SCAN_ACTION)
+
+            status == PaymentStatus.SHARING ||
+                status == PaymentStatus.AWAITING_USER_CONFIRMATION ->
+                listOf(CONFIRM_ACTION, WARNING_ACTION, UNKNOWN_ACTION, RETRY_ACTION)
+
+            status.isProblem -> listOf(RETRY_ACTION)
+
+            else -> emptyList()
+        }
+    }
 }
 
 /**

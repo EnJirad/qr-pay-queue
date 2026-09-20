@@ -65,7 +65,7 @@ QR Payment Queue walks you through a batch of QR payment screenshots — one
 | Architecture | Single activity, AndroidX, ViewModel + StateFlow, domain/UI separation |
 | Build | Gradle (Kotlin DSL), Android Gradle Plugin 8.7.3 |
 | Package | `com.enjirad.qrqueue` |
-| App version | 0.9.0 (versionCode 11) |
+| App version | 0.9.1 (versionCode 12) |
 | QR decoding | **None.** No QR library is used or depended on. |
 | Persistence | App-private JSON queue + SharedPreferences for the bank selection and settings + copied images |
 | CI | GitHub Actions (`testDebugUnitTest`, `lintDebug`, `assembleDebug`, APK artifact) |
@@ -261,8 +261,15 @@ Everything else that is still open is listed below, in queue order.
 
 - **Drag** the QR frame, the scan / ✓ / ⚠ / ? / ↻ buttons, the add-QR button, the
   safety text, the import hint and the progress caption to wherever you want
-  them. Nothing can be dragged off the screen, and dragging never triggers the
-  action underneath it.
+  them — touch and drag, no selecting an element first and no drag handle.
+  Nothing can be dragged off the screen, and dragging never triggers the action
+  underneath it.
+- **Both action states are arrangeable at once.** A QR that is ready to pay shows
+  only its scan action and an item the bank already holds shows only ✓ ⚠ ? ↻, but
+  in Edit mode the actions of the *other* state are drawn beside them as dimmed
+  placeholders, so you never have to hand a QR over (or resolve a problem) just to
+  move an action. A position belongs to the action, so what you arrange now is
+  where it sits later.
 - **Show / hide** the guidance text, the import hint and the progress caption
   from the panel (and from the control on each element). The actions that pay, or
   confirm, or replace a QR cannot be hidden — the model marks them non-hideable
@@ -406,14 +413,15 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`
 ## CI and APK artifact
 
 GitHub Actions runs on every push: unit tests, lint, assembleDebug, APK
-verification, then upload as **`qr-payment-queue-v0.9.0-debug`**. A failing
+verification, then upload as **`qr-payment-queue-v0.9.1-debug`**. A failing
 test, lint run or build fails the workflow.
 
 ## Verification status
 
 - The last **green** CI run is `35483100157` (commit `f0d6daa`, V0.9.0): 230 unit
   tests, `lintDebug` and `assembleDebug` pass, APK 9.4M, artifact
-  `qr-payment-queue-v0.9.0-debug`.
+  `qr-payment-queue-v0.9.0-debug`. V0.9.1 (Edit mode can place the actions of
+  both action states) is built by the run recorded in `AI_HANDOFF.md`.
 - Earlier V0.6 commits were red. Run `35455677419` (commit `ba3005f`) failed
   `testDebugUnitTest` with three failures:
   `PaymentQueueTest.homeOffersUnresolvedResultsBeforeAnythingElse`,

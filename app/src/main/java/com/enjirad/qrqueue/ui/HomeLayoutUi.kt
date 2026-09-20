@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -17,7 +18,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -29,12 +35,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enjirad.qrqueue.R
 import com.enjirad.qrqueue.domain.HomeElement
 import com.enjirad.qrqueue.domain.HomeLayoutConfig
+import com.enjirad.qrqueue.domain.QueueItem
 
 /**
  * The home screen's Edit mode (V0.9 §3), kept in its own file so the editing UI
@@ -56,6 +66,9 @@ import com.enjirad.qrqueue.domain.HomeLayoutConfig
  * happens, so it can never be delivered to the action underneath as a tap, and
  * the offset itself is clamped by [HomeLayoutConfig] so no element can be
  * dragged off the screen.
+ *
+ * There is no select-then-drag step and no drag handle: while Edit mode is on a
+ * touch on the element moves it straight away.
  *
  * @param onMove receives the element and the drag delta in dp.
  */
@@ -98,6 +111,81 @@ internal fun HomeElementBox(
             ),
         content = content,
     )
+}
+
+/** How much lighter a placeholder action looks than the item's own action. */
+private const val GHOST_ALPHA = 0.35f
+
+/**
+ * The actions the current item does not have right now, drawn as draggable
+ * placeholders while Edit mode is on (V0.9.1 §5–§7).
+ *
+ * The rail itself is status-driven — a `READY` item shows only its share action
+ * and an item the bank already holds shows only ✓ ⚠ ? ↻ — and that must not mean
+ * the user has to hand a QR over, wait for a bank, or resolve a problem before
+ * they can move the other actions. Edit mode therefore plots the rest of
+ * [HomeElement.ACTION_ELEMENTS] beside the real ones.
+ *
+ * They are placeholders in the strict sense: they carry the element's name for a
+ * screen reader, they can be dragged and they do nothing else. No action is ever
+ * wired to them, so a tap or a drag can never pay, confirm, report or retry.
+ */
+@Composable
+internal fun GhostRailActions(
+    item: QueueItem,
+    layout: HomeLayoutConfig,
+    onElementMoved: (HomeElement, Float, Float) -> Unit,
+) {
+    val current = HomeElement.railElements(item.status, editMode = false)
+
+    HomeElement.ACTION_ELEMENTS
+        .filter { element -> element !in current }
+        .forEach { element ->
+            Spacer(Modifier.height(12.dp))
+            HomeElementBox(
+                element = element,
+                layout = layout,
+                editMode = true,
+                onMove = onElementMoved,
+                modifier = Modifier.alpha(GHOST_ALPHA),
+            ) {
+                GhostActionIcon(element = element)
+            }
+        }
+}
+
+/**
+ * The circle of one placeholder action: the element's own icon, dimmed, and the
+ * same size as the real action it stands in for — the share action is the big
+ * one, the four answers are the smaller ones — so the position the user picks
+ * here is where that action really lands.
+ */
+@Composable
+private fun GhostActionIcon(element: HomeElement) {
+    val tint = MaterialTheme.colorScheme.onSurface
+    val size: Dp = if (element == HomeElement.SCAN_ACTION) 72.dp else 64.dp
+
+    Surface(
+        shape = CircleShape,
+        color = tint.copy(alpha = 0.08f),
+        modifier = Modifier.size(size),
+    ) {
+        Icon(
+            imageVector = ghostIcon(element),
+            contentDescription = stringResource(homeElementLabel(element)),
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            tint = tint,
+        )
+    }
+}
+
+/** The icon of one placeholder action: the same glyph its real action uses. */
+private fun ghostIcon(element: HomeElement): ImageVector = when (element) {
+    HomeElement.SCAN_ACTION -> Icons.Outlined.Share
+    HomeElement.CONFIRM_ACTION -> Icons.Outlined.CheckCircle
+    HomeElement.WARNING_ACTION -> Icons.Outlined.Warning
+    HomeElement.UNKNOWN_ACTION -> Icons.Outlined.Info
+    else -> Icons.Outlined.Refresh
 }
 
 /**
@@ -235,7 +323,7 @@ internal fun ResetLayoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-/** The name of one element in the Edit panel. */
+/** The name of one element in the Edit panel and on its placeholder. */
 private fun homeElementLabel(element: HomeElement): Int = when (element) {
     HomeElement.QR_IMAGE -> R.string.edit_element_qr_image
     HomeElement.SCAN_ACTION -> R.string.edit_element_scan
