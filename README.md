@@ -411,8 +411,9 @@ test, lint run or build fails the workflow.
 
 ## Verification status
 
-- The last **green** CI run is `35466912022` (commit `6f4a032`, V0.6.0): unit
-  tests, `lintDebug` and `assembleDebug` pass, APK 9.3M.
+- The last **green** CI run is `35483100157` (commit `f0d6daa`, V0.9.0): 230 unit
+  tests, `lintDebug` and `assembleDebug` pass, APK 9.4M, artifact
+  `qr-payment-queue-v0.9.0-debug`.
 - Earlier V0.6 commits were red. Run `35455677419` (commit `ba3005f`) failed
   `testDebugUnitTest` with three failures:
   `PaymentQueueTest.homeOffersUnresolvedResultsBeforeAnythingElse`,
@@ -428,12 +429,13 @@ test, lint run or build fails the workflow.
   gate, fallback, settings, daily reset, and the home layout model/codec).
 - V0.9 changes the payment hand-off and adds the home layout: an item is put into
   `AWAITING_USER_CONFIRMATION` before the bank app is launched, so the four
-actions appear immediately and a failed launch keeps them (it is recorded as an
-attempt, never as a `FAILED` item).
+  actions appear immediately and a failed launch keeps them (it is recorded as an
+  attempt, never as a `FAILED` item).
 - The whole UI — the three tabs, the badge, the one-handed action band, the
-  settings dialog, the problem-reasons sheet, the replace-QR picker and the
-  confirm panel — is **NOT YET VERIFIED ON A REAL DEVICE**: no Compose screen has
-  been rendered outside CI compilation. The test plan is in
+  settings dialog, the problem-reasons sheet, the replace-QR picker, the confirm
+  panel, the active QR area with the queue below it and Edit mode (drag, hide/show,
+  QR-image offset, reset) — is **NOT YET VERIFIED ON A REAL DEVICE**: no Compose
+  screen has been rendered outside CI compilation. The test plan is in
   [`docs/REAL_DEVICE_TEST.md`](docs/REAL_DEVICE_TEST.md).
 
 ## Known limitations

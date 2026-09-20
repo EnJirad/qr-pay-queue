@@ -26,9 +26,18 @@ problem flow, screen lock, hand selector, lazy daily reset.
 
 ## CI status right now (read this first)
 
-**`786bdde` GREEN (run `35476118557`, observed 2026-09-19): everything pushed to
-`main` is compiled, unit-tested, linted and packaged. The V0.7 and V0.8 sections
-below are what that run contains.**
+**`f0d6daa` GREEN (run `35483100157`, observed 2026-09-20): 230 unit tests,
+`lintDebug`, `assembleDebug`, APK 9.4M. Everything pushed to `main` is compiled,
+unit-tested, linted and packaged; the V0.9 section below is what that run
+contains (on top of the V0.8 base the repository owner commits itself).**
+
+| Commit | Run | Result |
+| --- | --- | --- |
+| `18c25ae` (owner's V0.8 base + its own four-action work) | `35481283802` | GREEN — the base this change was built on |
+| `f186024` feat: show the four payment actions before the bank is launched (V0.9) | `35482887473` | RED — **1 unit test failure**: my new test expected `retryShare` to jump straight to the awaiting state instead of the real SHARING → awaiting pair |
+| `f0d6daa` test: assert the real two-step retry in the launch-failure test | `35483100157` | **GREEN** — 230 unit tests, `lintDebug`, `assembleDebug`, APK 9.4M, artifact `qr-payment-queue-v0.9.0-debug` |
+
+Earlier runs (kept as history — the rows below are the V0.6→V0.8 line):
 
 | Commit | Run | Result |
 | --- | --- | --- |

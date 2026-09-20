@@ -1,4 +1,4 @@
-# Real-device test report — V0.6.0 tabs, one-handed mode, problem reasons, daily reset
+# Real-device test report — V0.9.0 hand-off rail, active QR area, Edit mode
 
 ## Status
 
@@ -9,11 +9,12 @@
 > **no screen of this app has ever been rendered outside a build**, and no bank
 > hand-off has been observed. Nothing in this repository claims otherwise.
 >
-> The last **green** CI run is the V0.6.0 build (`6f4a032`, run `35466912022`),
-> whose artifact is `qr-payment-queue-v0.6.0-debug` (APK 9.3M) — that is the one
-> to install for this checklist. Earlier V0.6 commits were red: run `35455677419`
-> (`ba3005f`) failed three unit tests, fixed at their cause by `6f4a032`.
-> Do not test against a stale 0.5.0 artifact and record the result as a V0.6 pass.
+> The last **green** CI run is the V0.9.0 build (`f0d6daa`, run `35483100157`),
+> whose artifact is `qr-payment-queue-v0.9.0-debug` (APK 9.4M) — that is the one
+> to install for this checklist. It runs 230 unit tests, `lintDebug` and
+> `assembleDebug`, and nothing more.
+> Do not test against a stale artifact and record the result as a V0.9 pass: the
+> V0.9 hand-off behaviour and the Edit mode only exist in `f0d6daa` or later.
 
 ## Required checklist (Xiaomi 15T Pro / Android 16) — 20 steps
 
@@ -61,9 +62,9 @@ None of these has been run.
 
 | Claim | Evidence |
 | --- | --- |
-| APK builds | **V0.5.0 only.** GitHub Actions run `35451443398` (commit `ec84fdd`): `assembleDebug` PASS, APK 9.3M. The V0.6 tree has **not** been built: run `35455677419` failed at `testDebugUnitTest`, so no APK was produced |
-| Unit tests pass | **V0.5.0 only** (163 test methods, same run). The V0.6 tree is at 190 test methods and the three failures of run `35455677419` have been fixed in the working tree, **unverified by CI so far** |
-| Lint passes | **V0.5.0 only** (same run, `abortOnError = true`). The V0.6 lint step has never run |
+| APK builds | **V0.9.0**: run `35483100157` (commit `f0d6daa`) `assembleDebug` PASS, APK 9.4M, artifact `qr-payment-queue-v0.9.0-debug` |
+| Unit tests pass | **V0.9.0**: same run, 230 test methods across 20 classes, 0 failures |
+| Lint passes | **V0.9.0**: same run, `lintDebug` PASS (`abortOnError = true`) |
 | State machine (all valid/invalid transitions) | `PaymentQueueTest` (25 methods) |
 | Only user confirmation completes an item | `PaymentConfirmationTest` (10 methods) |
 | Double-payment protection | `DoublePaymentTest` (8 methods): one attempt per tap burst, one hand-off at a time |
@@ -84,9 +85,9 @@ None of these has been run.
 | Device model | Xiaomi 15T Pro (target) |
 | Android version | Android 16 (target) |
 | Bank app versions | _to be filled in_ |
-| App version | 0.6.0 (versionCode 8) |
+| App version | 0.9.0 (versionCode 11) |
 | Build under test | commit hash of the tested build |
-| APK source | GitHub Actions artifact `qr-payment-queue-v0.6.0-debug` |
+| APK source | GitHub Actions artifact `qr-payment-queue-v0.9.0-debug` |
 | Test date | _to be filled in_ |
 | Tester | _to be filled in_ |
 
@@ -140,9 +141,9 @@ Status: `NOT RUN`
 
 ### TEST 8 — direct bank launch, no chooser
 
-Tap **ชำระเงิน** on a READY item.
+Tap the QR/scan action on a READY item.
 Expected: the selected bank opens directly; **no Android Sharesheet**;
-if the bank cannot be opened, the item becomes FAILED with the clear
+if the bank cannot be opened, the item **keeps its four actions** with the clear
 "ไม่สามารถเปิดธนาคารที่เลือกได้…" message and **no other app opens**.
 Status: `NOT RUN`
 
@@ -233,6 +234,49 @@ Expected: the queue and its copied images are deleted, a notice says the daily d
 was cleared, and the settings (hand mode, auto-reset, bank) are untouched. The
 manual **ล้างข้อมูลของวันนี้** does the same on demand, after a confirmation.
 Status: `NOT RUN`
+
+## V0.9 checklist — hand-off rail, active QR area, Edit mode
+
+All of these are **NOT RUN**: the behaviour they check was written without a device.
+
+### A. The four actions never depend on the bank launch
+
+| # | Step | Expected | Status |
+| --- | --- | --- | --- |
+| 31 | Tap the QR/scan action on a READY item | The four actions (✓ ⚠ ? ↻) are on screen **immediately** — before the bank app appears, and whether or not it appears | NOT RUN |
+| 32 | Same tap, with the selected bank **uninstalled** (or the bank set to one that is not installed) | The four actions **still** appear, with the "ไม่พบแอปธนาคารในเครื่อง" notice; nothing is marked FAILED; the item is not removed from หน้าแรก | NOT RUN |
+| 33 | Same tap with the stored image deleted (advanced; e.g. clear app data of one image via a file manager) | The four actions stay, with the "ไม่พบไฟล์รูป…" notice; the item is not failed | NOT RUN |
+| 34 | After a failed launch, read under the QR | The reason is shown as a caption **and** as a message; the queue did not move on | NOT RUN |
+| 35 | Tap ↻ with the bank still unavailable | The same Payment Item and the same QR are retried, a new attempt is recorded, the four actions stay, nothing becomes COMPLETED/FAILED/PROBLEM | NOT RUN |
+| 36 | Tap ↻ repeatedly on a payable item, each time looking at ชำระแล้ว / ปัญหา | No item is ever created, completed or moved by a retry; the item number and QR version never change | NOT RUN |
+| 37 | Kill the app right after the tap and reopen | The item comes back as ยังไม่ทราบผล and **nothing is re-sent automatically** | NOT RUN |
+| 38 | Tap the QR action with the bank app open already (edge case) | Only one attempt starts; no second bank window | NOT RUN |
+| 39 | Never tap anything after a successful bank launch | The item **never** completes by itself, no matter how long you wait or how often you return to the app | NOT RUN |
+
+### B. One active QR area, the rest listed below
+
+| # | Step | Expected | Status |
+| --- | --- | --- | --- |
+| 40 | Import 3 images | The top area shows **one** QR (the next action); the other two are listed below under คิวที่เหลือ with their own status | NOT RUN |
+| 41 | Import one more image while an item is awaiting your answer | The awaiting item keeps the top area (its four actions stay visible); the new QR joins the list below; nothing is duplicated or replaced | NOT RUN |
+| 42 | Complete the top item | It leaves the top area, the next open item takes the top spot, and the completed one is only in ชำระแล้ว | NOT RUN |
+
+### C. Edit mode
+
+| # | Step | Expected | Status |
+| --- | --- | --- | --- |
+| 43 | Tap **✎** next to the lock | Edit mode opens with the panel (element list, รีเซ็ตผัง, เสร็จสิ้น); every movable element gets a thin outline | NOT RUN |
+| 44 | In Edit mode, drag each element (QR frame, scan, ✓, ⚠, ?, ↻, add-QR, guidance, import hint, progress) | It follows the finger smoothly, stays inside the screen, and **no action fires** while dragging or after a drag | NOT RUN |
+| 45 | Tap (without dragging) an action inside Edit mode | The action must **not** run (a hand-off must not start from Edit mode) | NOT RUN |
+| 46 | In Edit mode, scroll the screen | Scrolling is disabled, so a drag is never read as a scroll and a scroll never moves an element | NOT RUN |
+| 47 | Hide the guidance text, the import hint and the progress caption with the eye control | They disappear; the panel can bring each one back; the actions cannot be hidden at all (no control for them) | NOT RUN |
+| 48 | Nudge the QR image inside its frame | The image moves inside the clipped frame and the code stays visible (the offset is bounded, the aspect ratio is kept) | NOT RUN |
+| 49 | Force-stop and reopen the app | Every position, every visibility choice and the QR-image offset are exactly as you left them | NOT RUN |
+| 50 | Rotate / recreate the screen (or leave and return from the bank) | The layout is unchanged | NOT RUN |
+| 51 | **รีเซ็ตผัง** → confirm | Every element returns to the app's own place, everything is shown again, and the QR image is centred | NOT RUN |
+| 52 | Tap **🔒** while in Edit mode | Edit mode closes and nothing can be dragged; tapping **✎** while locked reports that Home is locked instead of opening Edit mode | NOT RUN |
+| 53 | In Edit mode, drag the add-QR button, then leave Edit mode and tap it | It is still the normal **+ เพิ่มรูป QR** action (the picker opens) | NOT RUN |
+| 54 | Switch ถนัดมือ to ถนัดซ้าย and repeat one drag | The rest of Home mirrors for the left hand, and your own placement is kept (a saved layout wins over the default hand placement) | NOT RUN |
 
 ## Evidence to attach
 
