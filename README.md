@@ -418,10 +418,9 @@ test, lint run or build fails the workflow.
 
 ## Verification status
 
-- The last **green** CI run is `35483100157` (commit `f0d6daa`, V0.9.0): 230 unit
+- The last **green** CI run is `35484704958` (commit `57426ea`, V0.9.1): 236 unit
   tests, `lintDebug` and `assembleDebug` pass, APK 9.4M, artifact
-  `qr-payment-queue-v0.9.0-debug`. V0.9.1 (Edit mode can place the actions of
-  both action states) is built by the run recorded in `AI_HANDOFF.md`.
+  `qr-payment-queue-v0.9.1-debug`.
 - Earlier V0.6 commits were red. Run `35455677419` (commit `ba3005f`) failed
   `testDebugUnitTest` with three failures:
   `PaymentQueueTest.homeOffersUnresolvedResultsBeforeAnythingElse`,
@@ -431,10 +430,11 @@ test, lint run or build fails the workflow.
   confirms it.
 - Green CI means compile, unit test, lint and APK packaging only: no screen of
   this app has ever been rendered, so it is not a device pass.
-- The test suite is 230 test methods across 20 classes (state machine, the V0.9
+- The test suite is 236 test methods across 20 classes (state machine, the V0.9
   launch-failure contract, badge, QR replacement and QR-version history, duplicate
   skipping, double-payment protection, direct-share contract, persistence, upload
-  gate, fallback, settings, daily reset, and the home layout model/codec).
+  gate, fallback, settings, daily reset, the home layout model/codec, and which
+  actions each action state can place in Edit mode).
 - V0.9 changes the payment hand-off and adds the home layout: an item is put into
   `AWAITING_USER_CONFIRMATION` before the bank app is launched, so the four
   actions appear immediately and a failed launch keeps them (it is recorded as an
@@ -474,6 +474,7 @@ test, lint run or build fails the workflow.
 | V0.6.0 (0.6.0) | One-handed thumb zone, settings, problem reasons, clear item, daily reset | delivered |
 | V0.7.0 (0.7.0) | Fixed-position control panel, screen lock, one-tap problem flow | delivered |
 | V0.8.0 (0.8.0) | 4-action one-handed payment flow with retry re-share | delivered |
-| **V0.9.0 (0.9.0)** | **Immediate four-action hand-off (the launch never decides the rail) + home layout Edit mode (drag, hide/show, QR-image offset, reset)** | **see CI** |
+| V0.9.0 (0.9.0) | Immediate four-action hand-off (the launch never decides the rail) + home layout Edit mode (drag, hide/show, QR-image offset, reset) | delivered |
+| **V0.9.1 (0.9.1)** | **Edit mode places the actions of both action states at once (no state change before an action can be moved)** | **CI green, device test pending** |
 | V1.0 | Optional verified reconciliation with official bank API | planned |
 | — | Real-device verification of the tabs, the one-handed layout and the share flow | not yet done |

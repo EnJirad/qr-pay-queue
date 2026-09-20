@@ -29,13 +29,16 @@ lazy daily reset.
 
 ## CI status right now (read this first)
 
-**`f0d6daa` GREEN (run `35483100157`, observed 2026-09-20): 230 unit tests,
-`lintDebug`, `assembleDebug`, APK 9.4M. Everything pushed to `main` is compiled,
-unit-tested, linted and packaged; the V0.9 section below is what that run
-contains (on top of the V0.8 base the repository owner commits itself).**
+**`57426ea` GREEN (run `35484704958`, observed 2026-09-20): 236 unit tests,
+`lintDebug`, `assembleDebug`, APK 9.4M, artifact `qr-payment-queue-v0.9.1-debug`.
+Everything pushed to `main` is compiled, unit-tested, linted and packaged; the
+V0.9.1 and V0.9 sections below are what that run contains (on top of the V0.8 base
+the repository owner commits itself).**
 
 | Commit | Run | Result |
 | --- | --- | --- |
+| `66bc019` docs: record the green V0.9 CI run and extend the device checklist | `35483467102` | GREEN |
+| `57426ea` feat: place the actions of both states in Home Edit mode (V0.9.1) | `35484704958` | **GREEN** — 236 unit tests, `lintDebug`, `assembleDebug`, APK 9.4M |
 | `18c25ae` (owner's V0.8 base + its own four-action work) | `35481283802` | GREEN — the base this change was built on |
 | `f186024` feat: show the four payment actions before the bank is launched (V0.9) | `35482887473` | RED — **1 unit test failure**: my new test expected `retryShare` to jump straight to the awaiting state instead of the real SHARING → awaiting pair |
 | `f0d6daa` test: assert the real two-step retry in the launch-failure test | `35483100157` | **GREEN** — 230 unit tests, `lintDebug`, `assembleDebug`, APK 9.4M, artifact `qr-payment-queue-v0.9.0-debug` |
@@ -106,7 +109,7 @@ no per-state copy.
 
 ### Tests
 
-`HomeEditModeTest` (+5, now 12): a ready item can place the scan action and every
+`HomeEditModeTest` (+6, now 13): a ready item can place the scan action and every
 answer; an awaiting (and a handing-off) item can place its four answers and the
 scan action; every problem status keeps its resolving action while still placing
 all five; a completed item has no action left but still places all five; no
@@ -439,7 +442,7 @@ left/right hand preference.
 ## Tests
 
 Pure JVM JUnit 4, no device, no emulator, no new dependency, no `@Ignore`.
-**230 test methods across 20 classes** (`./gradlew testDebugUnitTest`): the count
+**236 test methods across 20 classes** (`./gradlew testDebugUnitTest`): the count
 is `grep -c "@Test"` over `app/src/test`, so the two new V0.9 classes
 (`HomeLayoutTest`, `HomeEditModeTest`) are included.
 
@@ -447,7 +450,7 @@ is `grep -c "@Test"` over `app/src/test`, so the two new V0.9 classes
 | --- | --- | --- |
 | `PaymentQueueTest` | 34 | every valid/invalid transition, ordering, counts, home priority, process death, the V0.9 launch-failure contract |
 | `HomeLayoutTest` | 18 | the layout model: placement, clamping, visibility rules, the QR-image offset, the stored form and every damaged-input path |
-| `HomeEditModeTest` | 7 | what the home screen renders: the active QR area, the queue list below it, edit-mode defaults, element visibility |
+| `HomeEditModeTest` | 13 | what the home screen renders: the active QR area, the queue list below it, edit-mode defaults, element visibility, and which actions each action state can place |
 | `QueueImportTest` | 14 | naming, fingerprints, item/version construction, N→N items |
 | `ImportCompletionTest` | 15 | import finishes by itself, summary including duplicates, payment lock |
 | `NavigationBadgeTest` | 14 | three tabs, badge counts, problem/completed tab contents |

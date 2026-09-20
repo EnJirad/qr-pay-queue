@@ -9,12 +9,13 @@
 > **no screen of this app has ever been rendered outside a build**, and no bank
 > hand-off has been observed. Nothing in this repository claims otherwise.
 >
-> The last **green** CI run is the V0.9.0 build (`f0d6daa`, run `35483100157`),
-> whose artifact is `qr-payment-queue-v0.9.0-debug` (APK 9.4M) — that is the one
-> to install for this checklist. It runs 230 unit tests, `lintDebug` and
+> The last **green** CI run is the V0.9.1 build (`57426ea`, run `35484704958`),
+> whose artifact is `qr-payment-queue-v0.9.1-debug` (APK 9.4M) — that is the one
+> to install for this checklist. It runs 236 unit tests, `lintDebug` and
 > `assembleDebug`, and nothing more.
 > Do not test against a stale artifact and record the result as a V0.9 pass: the
-> V0.9 hand-off behaviour and the Edit mode only exist in `f0d6daa` or later.
+> V0.9 hand-off behaviour and the Edit mode only exist in `f0d6daa` or later, and
+> placing the actions of both action states only exists in `57426ea` or later.
 
 ## Required checklist (Xiaomi 15T Pro / Android 16) — 20 steps
 
