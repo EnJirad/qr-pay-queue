@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Home
@@ -45,6 +46,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -97,6 +99,8 @@ import com.enjirad.qrqueue.domain.ImportProgress
 import com.enjirad.qrqueue.domain.ImportSummary
 import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
+import com.enjirad.qrqueue.domain.ProblemAction
+import com.enjirad.qrqueue.domain.ProblemActions
 import com.enjirad.qrqueue.domain.QueueItem
 import com.enjirad.qrqueue.domain.HandPreference
 import com.enjirad.qrqueue.domain.HomeElement
@@ -978,7 +982,6 @@ private fun HomeTab(
         if (currentItem != null) {
             ControlPanel(
                 item = currentItem,
-                selectedBank = state.selectedBank,
                 handPreference = state.handPreference,
                 leftHanded = leftHanded,
                 layout = layout,
@@ -1001,6 +1004,14 @@ private fun HomeTab(
                 layout = layout,
                 editMode = editMode,
                 onElementMoved = callbacks.onHomeElementMoved,
+            )
+        } else if (state.problemCount > 0) {
+            // Every QR left in this queue is a problem: Home has nothing left to
+            // hand to the bank, so it says where the work is instead of looking
+            // broken. Nothing is opened, retried or completed by showing this.
+            EmptyStateCard(
+                title = stringResource(R.string.home_no_payable_title),
+                body = stringResource(R.string.home_no_payable_body, state.problemCount),
             )
         }
         // V0.9 §2: the active QR keeps the top area and every other open item is
@@ -1221,7 +1232,6 @@ private fun ImportCard(
 @Composable
 private fun ControlPanel(
     item: QueueItem,
-    selectedBank: BankInfo?,
     handPreference: HandPreference,
     leftHanded: Boolean,
     layout: HomeLayoutConfig,
@@ -1230,7 +1240,6 @@ private fun ControlPanel(
     onQrImageMoved: (Float, Float) -> Unit,
     callbacks: QueueCallbacks,
 ) {
-    val isReady = item.status == PaymentStatus.READY
     // V0.9 §1: a hand-off in flight shows the same four actions as one awaiting
     // the user's answer, so the rail can never collapse into an empty panel.
     val isAwaiting = item.status == PaymentStatus.AWAITING_USER_CONFIRMATION ||
@@ -1260,10 +1269,6 @@ private fun ControlPanel(
             if (leftHanded) {
                 ActionRail(
                     item = item,
-                    selectedBank = selectedBank,
-                    isReady = isReady,
-                    isAwaiting = isAwaiting,
-                    isProblem = isProblem,
                     layout = layout,
                     editMode = editMode,
                     onElementMoved = onElementMoved,
@@ -1288,10 +1293,6 @@ private fun ControlPanel(
                 )
                 ActionRail(
                     item = item,
-                    selectedBank = selectedBank,
-                    isReady = isReady,
-                    isAwaiting = isAwaiting,
-                    isProblem = isProblem,
                     layout = layout,
                     editMode = editMode,
                     onElementMoved = onElementMoved,
@@ -1373,10 +1374,6 @@ private fun QrPreviewArea(
 @Composable
 private fun ActionRail(
     item: QueueItem,
-    selectedBank: BankInfo?,
-    isReady: Boolean,
-    isAwaiting: Boolean,
-    isProblem: Boolean,
     layout: HomeLayoutConfig,
     editMode: Boolean,
     onElementMoved: (HomeElement, Float, Float) -> Unit,
@@ -1391,118 +1388,29 @@ private fun ActionRail(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        when {
-            isReady -> {
-                // V0.7 §4: single scan icon to send QR to the selected bank.
-                // V0.9 §3.3: in edit mode the same touch moves the icon instead of
-                // starting a hand-off.
-                HomeElementBox(
-                    element = HomeElement.SCAN_ACTION,
-                    layout = layout,
-                    editMode = editMode,
-                    onMove = onElementMoved,
-                ) {
-                    IconButton(
-                        onClick = { if (!editMode) callbacks.onShareItem(item.id) },
-                        modifier = Modifier
-                            .size(72.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Share,
-                            contentDescription = stringResource(R.string.action_scan),
-                            modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                }
+        // The rail is driven by the model: HomeElement.railElements() returns this
+        // status's own actions in the order the product fixes them, and the rail
+        // draws them in exactly that order (see RailActionButton). Two things depend
+        // on it: the four payment answers are ordered ⚠ รายงานปัญหา → ✓ ยืนยันสำเร็จ →
+        // ? ไม่ทราบผล → ↻ ลองใหม่, and the Edit-mode placeholders follow the same
+        // order, so a placement can never contradict the order the real actions are
+        // drawn in.
+        HomeElement.railElements(item.status, editMode = false).forEachIndexed { index, element ->
+            if (index > 0) {
+                Spacer(Modifier.height(12.dp))
             }
-            isAwaiting -> {
-                // V0.7 §5–§6: four action icons in fixed order.
-                // §18/§20: order is always ✓, ⚠, ?, ↻ — muscle memory.
-                HomeElementBox(
-                    element = HomeElement.CONFIRM_ACTION,
-                    layout = layout,
+            HomeElementBox(
+                element = element,
+                layout = layout,
+                editMode = editMode,
+                onMove = onElementMoved,
+            ) {
+                RailActionButton(
+                    element = element,
+                    item = item,
                     editMode = editMode,
-                    onMove = onElementMoved,
-                ) {
-                    ActionIconButton(
-                        onClick = { if (!editMode) callbacks.onConfirmCompleted(item.id) },
-                        icon = Icons.Outlined.CheckCircle,
-                        contentDescription = stringResource(R.string.action_confirm_completed),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                HomeElementBox(
-                    element = HomeElement.WARNING_ACTION,
-                    layout = layout,
-                    editMode = editMode,
-                    onMove = onElementMoved,
-                ) {
-                    ActionIconButton(
-                        onClick = { if (!editMode) callbacks.onReportProblem(item.id) },
-                        icon = Icons.Outlined.Warning,
-                        contentDescription = stringResource(R.string.action_report_problem),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                HomeElementBox(
-                    element = HomeElement.UNKNOWN_ACTION,
-                    layout = layout,
-                    editMode = editMode,
-                    onMove = onElementMoved,
-                ) {
-                    ActionIconButton(
-                        onClick = { if (!editMode) callbacks.onMarkUnknown(item.id) },
-                        icon = Icons.Outlined.Info,
-                        contentDescription = stringResource(R.string.action_unknown),
-                        tint = MaterialTheme.colorScheme.tertiary,
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                // §11–§15: retry — opens the bank again with the same QR. The item
-                // does not move and nothing is completed by it.
-                HomeElementBox(
-                    element = HomeElement.RETRY_ACTION,
-                    layout = layout,
-                    editMode = editMode,
-                    onMove = onElementMoved,
-                ) {
-                    ActionIconButton(
-                        onClick = { if (!editMode) callbacks.onRetryShare(item.id) },
-                        icon = Icons.Outlined.Refresh,
-                        contentDescription = stringResource(R.string.action_retry_share),
-                        tint = MaterialTheme.colorScheme.secondary,
-                    )
-                }
-            }
-            isProblem -> {
-                HomeElementBox(
-                    element = HomeElement.RETRY_ACTION,
-                    layout = layout,
-                    editMode = editMode,
-                    onMove = onElementMoved,
-                ) {
-                    ActionIconButton(
-                        onClick = {
-                            if (editMode) {
-                                Unit
-                            } else if (item.status.requiresQrReplacement) {
-                                callbacks.onReplaceQr(item.id)
-                            } else {
-                                callbacks.onRetryItem(item.id)
-                            }
-                        },
-                        icon = Icons.Outlined.Refresh,
-                        contentDescription = stringResource(
-                            if (item.status.requiresQrReplacement) R.string.action_replace_qr
-                            else R.string.action_retry,
-                        ),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                    callbacks = callbacks,
+                )
             }
         }
 
@@ -1517,6 +1425,107 @@ private fun ActionRail(
                 onElementMoved = onElementMoved,
             )
         }
+    }
+}
+
+/**
+ * The button behind one rail element of the item's current state.
+ *
+ * The element — not this function — decides where it sits and in which order it
+ * is drawn: the rail iterates [HomeElement.railElements] and calls this once per
+ * element. What each element does is unchanged from V0.7/V0.9; this only gives
+ * the rail a single place to look up an element's icon, wording and action.
+ *
+ * In Edit mode every action is inert on purpose: a touch there drags the element
+ * and can never pay, confirm, report, retry or open the bank (`editMode` is
+ * checked in the click handler, so the drag gesture cannot leak into an action).
+ */
+@Composable
+private fun RailActionButton(
+    element: HomeElement,
+    item: QueueItem,
+    editMode: Boolean,
+    callbacks: QueueCallbacks,
+) {
+    val status = item.status
+
+    when (element) {
+        // V0.7 §4: the single scan icon that hands the QR to the selected bank.
+        HomeElement.SCAN_ACTION -> IconButton(
+            onClick = { if (!editMode) callbacks.onShareItem(item.id) },
+            modifier = Modifier
+                .size(72.dp)
+                .background(MaterialTheme.colorScheme.primary, CircleShape),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Share,
+                contentDescription = stringResource(R.string.action_scan),
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
+
+        // ✓ ยืนยันสำเร็จ — the only path to COMPLETED.
+        HomeElement.CONFIRM_ACTION -> ActionIconButton(
+            onClick = { if (!editMode) callbacks.onConfirmCompleted(item.id) },
+            icon = Icons.Outlined.CheckCircle,
+            contentDescription = stringResource(R.string.action_confirm_completed),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+
+        // ⚠ รายงานปัญหา — first in the rail's four answers (V0.9.3 §2).
+        HomeElement.WARNING_ACTION -> ActionIconButton(
+            onClick = { if (!editMode) callbacks.onReportProblem(item.id) },
+            icon = Icons.Outlined.Warning,
+            contentDescription = stringResource(R.string.action_report_problem),
+            tint = MaterialTheme.colorScheme.error,
+        )
+
+        // ? ไม่ทราบผล — the item leaves Home for the ปัญหา tab.
+        HomeElement.UNKNOWN_ACTION -> ActionIconButton(
+            onClick = { if (!editMode) callbacks.onMarkUnknown(item.id) },
+            icon = Icons.Outlined.Info,
+            contentDescription = stringResource(R.string.action_unknown),
+            tint = MaterialTheme.colorScheme.tertiary,
+        )
+
+        // §11–§15: ↻ ลองใหม่. It means the two things the domain says it means:
+        // for a problem item it is that item's resolving action (เปลี่ยน QR when the
+        // QR is known to be unusable, otherwise ลองอีกครั้ง), and for an item the
+        // bank already holds it opens the bank again with the same QR. The item
+        // never moves and nothing is completed by it.
+        HomeElement.RETRY_ACTION -> {
+            val isProblem = status.isProblem
+            ActionIconButton(
+                onClick = {
+                    if (editMode) {
+                        Unit
+                    } else if (isProblem && status.requiresQrReplacement) {
+                        callbacks.onReplaceQr(item.id)
+                    } else if (isProblem) {
+                        callbacks.onRetryItem(item.id)
+                    } else {
+                        callbacks.onRetryShare(item.id)
+                    }
+                },
+                icon = Icons.Outlined.Refresh,
+                contentDescription = stringResource(
+                    when {
+                        isProblem && status.requiresQrReplacement -> R.string.action_replace_qr
+                        isProblem -> R.string.action_retry
+                        else -> R.string.action_retry_share
+                    },
+                ),
+                tint = if (isProblem) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.secondary
+                },
+            )
+        }
+
+        // Every other element is placed by the layout, not by the rail.
+        else -> Unit
     }
 }
 
@@ -1709,7 +1718,7 @@ private fun EmptyStateCard(title: String, body: String) {
 
 // ---- item cards -------------------------------------------------------------
 
-/** The card Home uses for the item that needs attention right now. */
+/** The card the ปัญหา tab uses for the item that needs the user's attention. */
 @Composable
 private fun ProblemItemCard(
     item: QueueItem,
@@ -1746,18 +1755,18 @@ private fun ProblemItemCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
-            ProblemActions(item = item, handPreference = handPreference, callbacks = callbacks)
+            ProblemActionBand(item = item, handPreference = handPreference, callbacks = callbacks)
         }
     }
 }
 
 /**
- * The recovery actions of the current item, placed in the one-handed action area
+ * The recovery area of one problem item, placed in the one-handed action band
  * (V0.6 §4–§6) so "what do I do about this?" sits under the same thumb as the pay
- * action.
+ * action does on Home.
  */
 @Composable
-private fun ProblemActions(
+private fun ProblemActionBand(
     item: QueueItem,
     handPreference: HandPreference,
     callbacks: QueueCallbacks,
@@ -1768,98 +1777,33 @@ private fun ProblemActions(
 }
 
 /**
- * The buttons themselves, full width inside the action band. Every one of them is
- * an explicit user decision: nothing is retried, completed or re-shared by the app
- * itself.
+ * The actions of one problem item, in the order the domain fixes them
+ * ([ProblemActions.availableFor]): ลองส่ง QR ใหม่ → เปลี่ยนรูป QR → ยืนยันว่าชำระแล้ว
+ * → ล้างรายการ.
+ *
+ * Every button maps onto a transition that already exists in [PaymentQueue], so
+ * the tab has no retry, replacement or delete path of its own, and an action the
+ * domain refuses is not drawn at all: an item whose QR the user already reported
+ * unusable is never offered a re-send, and a FAILED item is never offered a
+ * confirmation (nothing reached the bank, so there is nothing to confirm).
+ *
+ * ล้างรายการ is the only destructive action, so it stays last and goes through the
+ * same confirmation dialog as before — no item is ever deleted by one tap.
  */
 @Composable
 private fun ProblemActionButtons(item: QueueItem, callbacks: QueueCallbacks) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        when (item.status) {
-            PaymentStatus.UNKNOWN -> {
-                Button(
-                    onClick = { callbacks.onConfirmCompleted(item.id) },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.action_confirm_completed))
-                }
-                OutlinedButton(
-                    onClick = { callbacks.onRetryItem(item.id) },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.action_retry))
-                }
-                OutlinedButton(
-                    onClick = { callbacks.onMarkQrUnusable(item.id) },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Text(text = stringResource(R.string.action_mark_qr_unusable))
-                }
-            }
-
-            PaymentStatus.REQUIRES_QR_REPLACEMENT -> {
-                Button(
-                    onClick = { callbacks.onReplaceQr(item.id) },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Text(text = stringResource(R.string.action_replace_qr))
-                }
-            }
-
-            else -> {
-                Button(
-                    onClick = { callbacks.onShareItem(item.id) },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Share,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.action_retry))
-                }
-                OutlinedButton(
-                    onClick = { callbacks.onReplaceQr(item.id) },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Text(text = stringResource(R.string.action_replace_qr))
-                }
-            }
+        ProblemActions.availableFor(item.status).forEachIndexed { index, action ->
+            ProblemActionButton(
+                action = action,
+                item = item,
+                primary = index == 0,
+                callbacks = callbacks,
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
         ) {
             TextButton(onClick = { callbacks.onViewItem(item.id) }) {
                 Text(
@@ -1867,15 +1811,103 @@ private fun ProblemActionButtons(item: QueueItem, callbacks: QueueCallbacks) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            TextButton(onClick = { callbacks.onClearItem(item.id) }) {
-                Text(
-                    text = stringResource(R.string.action_clear_item),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
         }
     }
+}
+
+/**
+ * One action of a problem item. The first one is the filled button (the usual way
+ * out of that status), the rest are outlined, and ล้างรายการ is tinted as an error
+ * because it removes the item from the queue.
+ */
+@Composable
+private fun ProblemActionButton(
+    action: ProblemAction,
+    item: QueueItem,
+    primary: Boolean,
+    callbacks: QueueCallbacks,
+) {
+    val status = item.status
+
+    // Each action is an explicit user decision, mapped onto the transition the
+    // domain already has for it. Nothing is retried, completed, replaced or
+    // re-shared by the app itself.
+    val onClick: () -> Unit = when (action) {
+        // A FAILED item never reached the bank, so its intact QR may be handed over
+        // again. An UNKNOWN one must not be re-sent by a tap: this runs the domain's
+        // explicit retry (UNKNOWN -> READY) instead, and sends nothing.
+        ProblemAction.RESCAN ->
+            if (status == PaymentStatus.FAILED) {
+                { callbacks.onShareItem(item.id) }
+            } else {
+                { callbacks.onRetryItem(item.id) }
+            }
+
+        ProblemAction.REPLACE_QR -> { callbacks.onReplaceQr(item.id) }
+        ProblemAction.CONFIRM_COMPLETED -> { callbacks.onConfirmCompleted(item.id) }
+        ProblemAction.MARK_QR_UNUSABLE -> { callbacks.onMarkQrUnusable(item.id) }
+        ProblemAction.CLEAR_ITEM -> { callbacks.onClearItem(item.id) }
+    }
+
+    val icon = when (action) {
+        ProblemAction.RESCAN -> Icons.Outlined.Refresh
+        ProblemAction.REPLACE_QR -> Icons.Outlined.Edit
+        ProblemAction.CONFIRM_COMPLETED -> Icons.Outlined.Check
+        ProblemAction.MARK_QR_UNUSABLE -> Icons.Outlined.Warning
+        ProblemAction.CLEAR_ITEM -> Icons.Outlined.Delete
+    }
+
+    val label = stringResource(
+        when (action) {
+            ProblemAction.RESCAN -> R.string.problem_action_rescan
+            ProblemAction.REPLACE_QR -> R.string.action_replace_qr
+            ProblemAction.CONFIRM_COMPLETED -> R.string.action_confirm_completed
+            ProblemAction.MARK_QR_UNUSABLE -> R.string.action_mark_qr_unusable
+            ProblemAction.CLEAR_ITEM -> R.string.action_clear_item
+        },
+    )
+
+    val shape = RoundedCornerShape(16.dp)
+    val modifier = Modifier
+        .fillMaxWidth()
+        .height(48.dp)
+
+    if (primary) {
+        Button(
+            onClick = onClick,
+            shape = shape,
+            modifier = modifier,
+        ) {
+            ProblemActionLabel(icon = icon, label = label)
+        }
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            shape = shape,
+            modifier = modifier,
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = if (action == ProblemAction.CLEAR_ITEM) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+            ),
+        ) {
+            ProblemActionLabel(icon = icon, label = label)
+        }
+    }
+}
+
+/** The icon + wording of one problem action, shared by both button styles. */
+@Composable
+private fun ProblemActionLabel(icon: ImageVector, label: String) {
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+    )
+    Spacer(Modifier.width(8.dp))
+    Text(text = label)
 }
 
 /** The card Home uses for the next QR that is ready to pay. */

@@ -289,6 +289,19 @@ All of these are **NOT RUN**: the behaviour they check was written without a dev
 | 58 | Drag the answers into place while the item is ready, then hand the QR over and come back | The four answers sit exactly where you left them (one layout, not one per state) | NOT RUN |
 | 59 | In Edit mode, tap a dimmed placeholder | Nothing happens: no payment, no problem report, no retry, no photo picker | NOT RUN |
 
+### E. The rail order and the ปัญหา tab (V0.9.3)
+
+| # | Step | Expected | Status |
+| --- | --- | --- | --- |
+| 60 | On Home, with an item the bank already holds, read the rail from top to bottom | **⚠ รายงานปัญหา** first, then **✓ ยืนยันสำเร็จ**, then **? ไม่ทราบผล**, then **↻ ลองสแกนอีกครั้ง** | NOT RUN |
+| 61 | Enter Edit mode with the same item | The same four answers appear in the same order (plus the scan action as a dimmed placeholder), each can be dragged, and **no action fires** while or after dragging | NOT RUN |
+| 62 | Tap **⚠ มีปัญหา** on the active QR | The item leaves Home **completely** — it is neither the top QR nor in คิวที่เหลือ — the next payable QR takes the top area by itself, the ปัญหา badge goes up by 1, the item is listed under ปัญหา, and **nothing is deleted** | NOT RUN |
+| 63 | Open ปัญหา and read the actions of that item (ต้องเปลี่ยน QR) | Only **เปลี่ยน QR** and **ล้างรายการ** — no re-send is offered, because that QR was reported unusable | NOT RUN |
+| 64 | Make an `UNKNOWN` item (hand a QR over, then tap **? ไม่ทราบผล**) and open ปัญหา | Its actions, top to bottom: **ลองส่ง QR ใหม่ · เปลี่ยน QR · ทำรายการเสร็จแล้ว · ล้างรายการ**. **ลองส่ง QR ใหม่** returns it to หน้าแรก as รอชำระ and sends **nothing** by itself | NOT RUN |
+| 65 | (Advanced) Delete the stored image of a READY item, then tap it, and open ปัญหา | The item is `FAILED` and offers **ลองส่ง QR ใหม่ · เปลี่ยน QR · QR ใช้งานไม่ได้ · ล้างรายการ** — with no "ทำรายการเสร็จแล้ว", because nothing reached the bank | NOT RUN |
+| 66 | Tap **ล้างรายการ** on any problem item | The confirmation dialog appears **first**; **ยกเลิก** keeps the item exactly as it was; **ล้างรายการ** deletes only that item and its images | NOT RUN |
+| 67 | Turn every remaining item into a problem (report or ไม่ทราบผล) | Home shows "ยังไม่มี QR ที่พร้อมส่งไปธนาคาร" with the count and **no** QR panel; the ปัญหา badge still counts every one of them | NOT RUN |
+
 ## Evidence to attach
 
 For each executed test, attach a screenshot named `<test-number>-<step>.png` under

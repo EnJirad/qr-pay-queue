@@ -37,9 +37,10 @@ QR Payment Queue walks you through a batch of QR payment screenshots — one
    Android's photo picker. (The button is disabled until you select a bank.)
    Exact duplicates are skipped; a partial import keeps what succeeded.
 3. Return to the home screen **by itself** as soon as the import is finished.
-4. **หน้าแรก** shows the next thing to do, in the required priority order:
-   an unresolved result first, then a QR that must be replaced, then a failed
-   item, then the next item ready to pay.
+4. **หน้าแรก** shows the QR you are working on — the item that owns the hand-off
+   if there is one, otherwise the next item ready to pay — with the rest of the
+   **payable** queue listed below it. Anything that needs your attention waits in
+   the **ปัญหา** tab instead, and a reported item leaves หน้าแรก completely.
 5. Tap **ชำระเงิน**. The selected bank app opens **directly** — no
    "share with..." chooser.
 6. Complete the payment in the bank app: it reads the QR, shows the recipient
@@ -185,12 +186,32 @@ stays as history (v1, *ใช้งานไม่ได้*), and the same Paym
 back to `READY`. If the replacement cannot be recorded, the old QR is left
 exactly as it was and the app says so.
 
-### 7. The problem badge
+### 7. The problem tab
 
-The **ปัญหา** tab carries a numeric badge equal to the number of items that
-currently need your attention (`UNKNOWN` + `REQUIRES_QR_REPLACEMENT` + `FAILED`).
-Completed items, items ready to pay and items already with the bank are never
-counted, and a count of zero shows no badge at all.
+Becoming a problem takes an item off **หน้าแรก** completely: it is no longer the
+active QR and it is no longer listed below it either. It is **not** deleted — it
+stays in the queue and in persistence, and its place is the **ปัญหา** tab, which
+carries a numeric badge equal to the number of items that need your attention
+(`UNKNOWN` + `REQUIRES_QR_REPLACEMENT` + `FAILED`). Completed items, items ready to
+pay and items already with the bank are never counted, and a count of zero shows
+no badge at all. หน้าแรก simply continues with the next payable QR, and if nothing
+payable is left it says so and points at the ปัญหา tab.
+
+Each problem item is an action area of its own, and every action is one its own
+state allows — an action the state machine refuses is not drawn at all, so a
+button here never silently does nothing:
+
+| Action | `UNKNOWN` | `FAILED` | `REQUIRES_QR_REPLACEMENT` |
+| --- | --- | --- | --- |
+| 🔄 **ลองส่ง QR ใหม่** | ✅ — the explicit retry (`UNKNOWN → READY`); nothing is sent | ✅ — hands the same, intact QR to the bank again | — the QR is known to be unusable and may not be re-sent |
+| 🖼️ **เปลี่ยน QR** | ✅ | ✅ | ✅ |
+| ✅ **ทำรายการเสร็จแล้ว** | ✅ — you checked the bank yourself | — nothing reached the bank | — |
+| ⚠️ **QR ใช้งานไม่ได้** | — | ✅ | — already marked unusable |
+| 🗑️ **ล้างรายการ** | ✅ — last, after a confirmation | ✅ — last, after a confirmation | ✅ — last, after a confirmation |
+
+**ดูรูป** shows the stored image at any time. Nothing here completes a payment on
+its own: **ทำรายการเสร็จแล้ว** is still the only thing that does, and it is offered
+only where the result could actually be known.
 
 When every item is confirmed, the home tab shows **วันนี้ชำระครบแล้ว** with the
 count and a **+ เพิ่ม QR** action.
@@ -204,12 +225,13 @@ card: bottom-right for a right-handed user, mirrored for a left-handed one. Ther
 is one layout and one setting, the actions keep a full-size touch target, and the
 choice is remembered across restarts.
 
-### 9. Report a problem with a reason
+### 9. Report a problem
 
-**มีปัญหา** on the current QR opens a short list of reasons (QR ใช้งานไม่ได้,
-ธนาคารแจ้งว่า QR ไม่ถูกต้อง, QR หมดอายุ, จ่ายไม่ได้, รูปภาพมีปัญหา, อื่น ๆ). The
-reason is stored with the item and shown in **ปัญหา**. The item keeps its number,
-its QR becomes unusable and stays as history, and the item waits for a new QR.
+**⚠ มีปัญหา** is the first of the four payment answers, and it is one tap: the item
+moves to **ปัญหา** as `REQUIRES_QR_REPLACEMENT` immediately — no reason list. Its QR
+is marked unusable and stays as history, the item keeps its number and its place in
+the queue, หน้าแรก continues with the next payable QR, and nothing is deleted or
+demanded. Replacing the QR is your own decision, taken from the ปัญหา tab.
 
 ### 10. Clear one item
 
@@ -236,9 +258,9 @@ The home tab is one **active QR area** plus the queue below it:
 │  ⚙ 🔒 ✎                        │
 │                                 │
 │   ╭───────────────╮  ┌────────┐ │
-│   │               │  │   ✓    │ │
-│   │   ACTIVE QR   │  ├────────┤ │
 │   │               │  │   ⚠    │ │
+│   │   ACTIVE QR   │  ├────────┤ │
+│   │               │  │   ✓    │ │
 │   ╰───────────────╯  ├────────┤ │
 │   QR #01            │   ?    │ │
 │                     ├────────┤ │
@@ -253,7 +275,23 @@ The home tab is one **active QR area** plus the queue below it:
 
 The item that owns the hand-off (the payment you are in the middle of) always
 takes the top area, so its four actions are never hidden behind another item.
-Everything else that is still open is listed below, in queue order.
+Everything else **still payable** is listed below, in queue order; items in
+`ปัญหา` and `ชำระแล้ว` are not repeated here.
+
+### The four payment answers
+
+The rail of an item the bank already holds is always, from the top down:
+
+| | Action | What it does |
+| --- | --- | --- |
+| 1 | **⚠ มีปัญหา** | reports that this QR cannot be used → the item moves to **ปัญหา** |
+| 2 | **✓ ทำรายการเสร็จแล้ว** | you checked the bank and the payment went through → `COMPLETED` |
+| 3 | **? ไม่ทราบผล** | the result is not known → `UNKNOWN` in **ปัญหา**, never auto-retried |
+| 4 | **↻ ลองสแกนอีกครั้ง** | opens the bank again with the same QR — nothing is completed |
+
+The order is fixed by the model (`HomeElement.railElements`), the rail draws
+exactly that list, and it is the same order in Edit mode — so placing an action
+never reorders it.
 
 ### Edit the layout
 

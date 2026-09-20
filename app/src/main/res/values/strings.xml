@@ -60,6 +60,8 @@
     <string name="reset_layout_confirm">รีเซ็ตผัง</string>
     <string name="home_progress">%1$d / %2$d</string>
     <string name="home_queue_title">คิวที่เหลือ</string>
+    <string name="home_no_payable_title">ยังไม่มี QR ที่พร้อมส่งไปธนาคาร</string>
+    <string name="home_no_payable_body">มี %1$d รายการที่ต้องจัดการอยู่ในแท็บปัญหา (เปลี่ยน QR · ลองส่งใหม่ · ล้างรายการ)</string>
 
     <!-- bank selection -->
     <string name="bank_section_title">ธนาคารสำหรับชำระเงิน</string>
@@ -115,6 +117,7 @@
     <string name="problems_title">รายการที่มีปัญหา</string>
     <string name="problems_empty_title">ไม่มีรายการที่มีปัญหา</string>
     <string name="problems_empty_body">ทุกรายการเรียบร้อย หากมีรายการที่ต้องตรวจสอบผลหรือต้องเปลี่ยน QR ระบบจะแสดงที่นี่ พร้อมตัวเลขบนแท็บ</string>
+    <string name="problem_action_rescan">ลองส่ง QR ใหม่</string>
     <string name="problem_unknown_note">การชำระเงินอาจเกิดขึ้นแล้ว กรุณาตรวจสอบในแอปธนาคารก่อน ระบบจะไม่ส่งซ้ำให้เอง</string>
     <string name="problem_qr_unusable_note">QR นี้ใช้งานไม่ได้ รายการยังอยู่ในคิว กรุณาเปลี่ยน QR ใหม่</string>
     <string name="problem_failed_note">แอปนี้ไม่สามารถส่งรูปไปยังธนาคารได้ รายการนี้ยังไม่ถึงธนาคาร</string>

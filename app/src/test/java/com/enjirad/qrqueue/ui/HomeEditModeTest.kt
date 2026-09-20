@@ -9,6 +9,7 @@ import com.enjirad.qrqueue.domain.testQueue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,7 +34,7 @@ class HomeEditModeTest {
     }
 
     @Test
-    fun `the queued list is the open queue without the active QR`() {
+    fun `the queued list is the rest of the payable queue`() {
         val state = QueueUiState(
             queue = queueOf(
                 testItem("ready-1", 0),
@@ -130,8 +131,8 @@ class HomeEditModeTest {
         assertEquals(
             listOf(
                 HomeElement.SCAN_ACTION,
-                HomeElement.CONFIRM_ACTION,
                 HomeElement.WARNING_ACTION,
+                HomeElement.CONFIRM_ACTION,
                 HomeElement.UNKNOWN_ACTION,
                 HomeElement.RETRY_ACTION,
             ),
@@ -147,10 +148,12 @@ class HomeEditModeTest {
     fun `an awaiting item can place its four answers and the share action`() {
         val awaiting = PaymentStatus.AWAITING_USER_CONFIRMATION
 
+        // The four answers, in the order the product fixes them: รายงานปัญหา first,
+        // ยืนยันสำเร็จ second, then ไม่ทราบผล and ลองใหม่.
         assertEquals(
             listOf(
-                HomeElement.CONFIRM_ACTION,
                 HomeElement.WARNING_ACTION,
+                HomeElement.CONFIRM_ACTION,
                 HomeElement.UNKNOWN_ACTION,
                 HomeElement.RETRY_ACTION,
             ),
@@ -221,5 +224,105 @@ class HomeEditModeTest {
         assertEquals(8f, layout.offsetX(HomeElement.CONFIRM_ACTION), 0.0001f)
         assertEquals(-16f, layout.offsetY(HomeElement.CONFIRM_ACTION), 0.0001f)
         assertEquals(0f, layout.offsetX(HomeElement.SCAN_ACTION), 0.0001f)
+    }
+
+    // ---- the fixed order of the four payment answers -----------------------
+
+    @Test
+    fun `the four payment answers are ordered report, confirm, unknown, retry`() {
+        val expected = listOf(
+            HomeElement.WARNING_ACTION,
+            HomeElement.CONFIRM_ACTION,
+            HomeElement.UNKNOWN_ACTION,
+            HomeElement.RETRY_ACTION,
+        )
+
+        // The rail draws exactly the list railElements() returns, in that order, so
+        // this is the order the user sees top to bottom.
+        assertEquals(
+            expected,
+            HomeElement.railElements(PaymentStatus.AWAITING_USER_CONFIRMATION, editMode = false),
+        )
+        assertEquals(
+            expected,
+            HomeElement.railElements(PaymentStatus.SHARING, editMode = false),
+        )
+
+        // Edit mode offers the same four in the same order (plus the scan action at
+        // the top), so placing an action never reorders it.
+        assertEquals(
+            listOf(HomeElement.SCAN_ACTION) + expected,
+            HomeElement.railElements(PaymentStatus.AWAITING_USER_CONFIRMATION, editMode = true),
+        )
+    }
+
+    // ---- a problem item is not on Home any more ----------------------------
+
+    @Test
+    fun `a problem item leaves the home queue list`() {
+        val queue = queueOf(
+            testItem("a", 0),
+            testItem("b", 1),
+            testItem("c", 2),
+        )
+        val before = QueueUiState(queue = queue)
+        assertEquals(listOf("b", "c"), before.queuedItems.map { item -> item.id })
+
+        val after = before.copy(queue = queue.reportProblem("a", "QR ใช้งานไม่ได้", 10L))
+
+        // Gone from Home: neither the active QR nor the list below it.
+        assertEquals("b", after.activeItem?.id)
+        assertTrue(after.queuedItems.none { item -> item.id == "a" })
+        // Still in the queue, and now listed under ปัญหา.
+        assertEquals(3, after.queue?.itemCount)
+        assertEquals(listOf("a"), after.queue?.problemItems?.map { item -> item.id })
+    }
+
+    @Test
+    fun `an unresolved result is not in the home queue list either`() {
+        val state = QueueUiState(
+            queue = queueOf(
+                testItem("unknown", 0, PaymentStatus.UNKNOWN),
+                testItem("ready", 1),
+            ),
+        )
+
+        assertEquals("ready", state.activeItem?.id)
+        assertTrue(state.queuedItems.isEmpty())
+        assertEquals(1, state.problemCount)
+        assertEquals(2, state.queue?.itemCount)
+    }
+
+    // ---- a drag never acts -------------------------------------------------
+
+    @Test
+    fun `a drag in edit mode moves the element and leaves the queue alone`() {
+        val queue = queueOf(testItem("a", 0), testItem("b", 1))
+        val before = QueueUiState(queue = queue, homeEditMode = true)
+
+        // Rearranging is a layout change and nothing else: the queue, its statuses
+        // and its items are exactly what they were, which is what keeps a drag from
+        // ever paying, confirming, reporting or retrying.
+        val moved = before.copy(
+            homeLayout = before.homeLayout.moveElement(HomeElement.SCAN_ACTION, 12f, -8f),
+        )
+
+        assertEquals(12f, moved.homeLayout.offsetX(HomeElement.SCAN_ACTION), 0.0001f)
+        assertEquals(-8f, moved.homeLayout.offsetY(HomeElement.SCAN_ACTION), 0.0001f)
+        assertSame(queue, moved.queue)
+        assertEquals(before.activeItem?.id, moved.activeItem?.id)
+        assertEquals(before.nextActionItem?.id, moved.nextActionItem?.id)
+        assertEquals(0, moved.problemCount)
+        assertEquals(0, moved.completedCount)
+
+        // Every status can place every action while edit mode is on, so no state
+        // has to be reached before an action can be moved.
+        PaymentStatus.entries.forEach { status ->
+            assertEquals(
+                status.toString(),
+                HomeElement.ACTION_ELEMENTS,
+                HomeElement.railElements(status, editMode = true),
+            )
+        }
     }
 }

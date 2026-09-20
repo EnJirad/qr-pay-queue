@@ -200,20 +200,56 @@ data class QueueUiState(
         get() = awaitingAnswerItem ?: nextActionItem
 
     /**
-     * The open QR items that sit *below* the active QR area (V0.9 §2): everything
-     * still in the queue except the item the top area is already showing, so a
-     * newly imported QR joins the list and no item is duplicated or lost.
+     * The QR items that sit *below* the active QR area: the rest of the queue Home
+     * still has to pay, so a newly imported QR joins the list and no item is
+     * duplicated or lost.
+     *
+     * Only [PaymentStatus.READY] items are listed (V0.9.3). A problem item — an
+     * unresolved result, a QR the user reported, a reported failure — has left
+     * Home the moment it became a problem and is shown in the ปัญหา tab alone, so
+     * Home cannot offer back the very QR the user just took out of the queue, and
+     * the badge above the list counts only what Home can still hand over. The item
+     * itself is never deleted by this: it is still in the queue, still persisted,
+     * and counted by [problemBadge].
      */
     val queuedItems: List<QueueItem>
         get() {
             val current = activeItem
             return queue?.items
                 .orEmpty()
-                .filter { item -> item.status.isActive && item.id != current?.id }
+                .filter { item ->
+                    item.status == PaymentStatus.READY && item.id != current?.id
+                }
         }
 
     /** True when [element] should be drawn on the home screen. */
     fun isElementVisible(element: HomeElement): Boolean = homeLayout.isVisible(element)
+
+    // ---- clearing one item (the ปัญหา tab's ล้างรายการ) -----------------------
+
+    /**
+     * The user asked to delete one item.
+     *
+     * This is only the ask: the confirmation is now on screen, the item is still
+     * in the queue and nothing has been deleted. Keeping the two steps in the
+     * state holder (instead of only in the screen) is what makes "ล้างรายการ is
+     * never one tap away from deletion" a rule that can be asserted without a
+     * device — see `ProblemTabActionsTest`.
+     */
+    fun clearingItem(itemId: String): QueueUiState = copy(
+        clearItemConfirmationVisible = true,
+        itemToClearId = itemId,
+    )
+
+    /** The confirmation was dismissed: the item stays, untouched. */
+    fun clearItemDismissed(): QueueUiState = copy(
+        clearItemConfirmationVisible = false,
+        itemToClearId = null,
+    )
+
+    /** True only while the user is being asked to confirm the deletion of one item. */
+    val awaitsClearItemConfirmation: Boolean
+        get() = clearItemConfirmationVisible && itemToClearId != null
 }
 
 /**
@@ -1279,19 +1315,13 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onClearItemRequested(itemId: String) {
         _uiState.update {
-            it.copy(
-                clearItemConfirmationVisible = true,
-                itemToClearId = itemId,
-            )
+            it.clearingItem(itemId)
         }
     }
 
     fun onClearItemDismissed() {
         _uiState.update {
-            it.copy(
-                clearItemConfirmationVisible = false,
-                itemToClearId = null,
-            )
+            it.clearItemDismissed()
         }
     }
 
@@ -1299,10 +1329,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val itemId = _uiState.value.itemToClearId ?: return
 
         _uiState.update {
-            it.copy(
-                clearItemConfirmationVisible = false,
-                itemToClearId = null,
-            )
+            it.clearItemDismissed()
         }
 
         scope.launch {

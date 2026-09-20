@@ -16,24 +16,29 @@ private bank API, no QR decoder, no automatic payment confirmation.
 
 ## Current version
 
-**0.9.1 (versionCode 12)** — Edit mode can now place the actions of **both**
-action states at once (a ready item's four answers, and an awaiting item's scan
-action, are draggable without changing the item's state first), on top of V0.9.0:
-the hand-off enters AWAITING_USER_CONFIRMATION *before* the bank app is launched
-(the four actions appear immediately and no launch result can remove them), Home
-keeps one active QR area with the rest of the queue listed below it, and Home has
-an Edit mode (touch-and-drag placement, per-element show/hide, QR-image offset
-inside its frame, reset layout — all persisted). Plus everything from V0.8:
-fixed-position control panel, one-tap problem flow, screen lock, hand selector,
-lazy daily reset.
+**0.9.1 (versionCode 12)** — the latest change (V0.9.3) touches only the two
+surfaces it was asked to: the order of Home's four payment answers, and the ปัญหา
+tab, which is now an action area instead of a list to read. Plus everything from
+V0.9.1/V0.9.0: Edit mode places the actions of **both** action states at once (a
+ready item's four answers, and an awaiting item's scan action, are draggable
+without changing the item's state first); the hand-off enters
+AWAITING_USER_CONFIRMATION *before* the bank app is launched (the four actions
+appear immediately and no launch result can remove them); Home keeps one active QR
+area with the payable queue below it; and Home has an Edit mode (touch-and-drag
+placement, per-element show/hide, QR-image offset inside its frame, reset layout —
+all persisted). Plus everything from V0.8: fixed-position control panel, one-tap
+problem flow, screen lock, hand selector, lazy daily reset.
 
 ## CI status right now (read this first)
 
-**`4c6dfae` GREEN (run `35487356518`, observed 2026-09-20): 242 unit tests,
-`lintDebug`, `assembleDebug`, APK, artifact `qr-payment-queue-v0.9.1-debug`.
-Everything pushed to `main` is compiled, unit-tested, linted and packaged; the
-V0.9.2 and V0.9.1 sections below are what that run contains (on top of the V0.8 base
-the repository owner commits itself).**
+**The last GREEN run was `35487356518` (`4c6dfae`, observed 2026-09-20): 242 unit
+tests, `lintDebug`, `assembleDebug`, APK, artifact `qr-payment-queue-v0.9.1-debug`.**
+
+This environment has **no JDK and no Android SDK** (`java -version` → `java: not
+found`), so `./gradlew` cannot run here at all. Nothing in this file claims a local
+build. The V0.9.3 row in the table below is filled in from the GitHub Actions run
+of the commit it names — if that row is missing, the V0.9.3 change is **unverified**
+and must not be described as passing.
 
 | Commit | Run | Result |
 | --- | --- | --- |
@@ -72,7 +77,117 @@ All three were fixed at their cause by `6f4a032` (below) and CI has confirmed it
 That run proves **compile + unit test + lint + APK packaging only** — no screen of
 this app has still ever been rendered, so nothing here is a device pass.
 
-## Latest change: V0.9.1 — Edit mode places both action states at once
+## Latest change: V0.9.3 — the rail's order and a ปัญหา tab that works
+
+Two surfaces only: Home's action order and the ปัญหา tab. No change to the queue,
+to persistence, to the share flow or to the state machine.
+
+### 1. Home's four payment answers are now ⚠ → ✓ → ? → ↻
+
+They were ✓ ⚠ ? ↻ (confirm first, report second). The required order is
+รายงานปัญหา → ยืนยันสำเร็จ → ไม่ทราบผล → ลองใหม่.
+
+The order used to live in the **screen**: `ActionRail` had a
+`when { isReady -> … isAwaiting -> … isProblem -> … }` that drew the four
+`HomeElementBox`es in literal source order, so no test could protect it. It now
+lives in the model, where the Edit-mode list already came from:
+
+- `HomeElement.ACTION_ELEMENTS` and `normalRailElements()` return the new order
+  (`WARNING_ACTION`, `CONFIRM_ACTION`, `UNKNOWN_ACTION`, `RETRY_ACTION`);
+- `ActionRail` iterates `HomeElement.railElements(item.status, editMode = false)`
+  and draws what it is given, in that order, through the new `RailActionButton`
+  (a pure element → icon/wording/action mapping, so the scan action and the problem
+  item's resolving action behave exactly as before — ↻ still means เปลี่ยน QR for a
+  `REQUIRES_QR_REPLACEMENT` item, ลองอีกครั้ง for another problem item, and re-open
+  the bank for an item the bank already holds);
+- the Edit-mode placeholders follow the same order, so a placement never
+  contradicts the order the real actions appear in.
+
+`HomeEditModeTest` therefore asserts the order the user actually sees, rather than
+an order only the screen knew about.
+
+Edit mode itself is untouched: `HomeElementBox` still drags on touch-and-hold with
+`detectDragGestures` + `consume()`, every action element is still placeable in every
+state, placements are still persisted as offsets in `HomeLayoutConfig`, and every
+click handler still starts with `if (!editMode)` so a drag can never pay, confirm,
+report, retry or open the bank.
+
+`ActionRail` also dropped four parameters that were passed but never read
+(`selectedBank`, `isReady`, `isAwaiting`, `isProblem`; `ControlPanel` still computes
+the two it uses for the card border).
+
+### 2. A problem item now really leaves Home (a real defect, fixed)
+
+V0.9.2 made the **active** area skip problems (`nextActionItem` is READY-only), but
+`QueueUiState.queuedItems` still filtered on `status.isActive`, and `isActive` is
+just `!isCompleted`. So a reported item left the top of Home and immediately
+reappeared in the คิวที่เหลือ list below it — with a เปลี่ยน QR button — instead of
+living only in ปัญหา.
+
+`queuedItems` is now READY-only. Consequences, all intended:
+
+- reporting a problem, marking ไม่ทราบผล or failing an item removes it from Home
+  **entirely** (not the active QR, not in the list);
+- the คิวที่เหลือ badge counts only what Home can still hand to the bank;
+- nothing is deleted: the item is still in the queue, still persisted, and counted
+  by `problemBadge`;
+- a queue whose only remaining items are problems has no active QR, so Home would
+  otherwise have drawn no panel at all. It now shows a short card
+  (`home_no_payable_title` / `home_no_payable_body`, with the problem count) that
+  points at the ปัญหา tab. It opens nothing and completes nothing.
+
+### 3. The ปัญหา tab is an action area, and the domain decides what is in it
+
+`domain/ProblemAction.kt` is new and pure. For each problem status,
+`ProblemActions.availableFor(status)` returns the recovery actions that status may
+be offered, in order, and the screen draws exactly that list. Every action maps onto
+a transition that already exists in `PaymentQueue` — the tab still invents no
+retry, replacement or delete path:
+
+| Status | Offered |
+| --- | --- |
+| `UNKNOWN` | 🔄 ลองส่ง QR ใหม่ (`retryItem` → READY; **nothing is sent**) · 🖼️ เปลี่ยน QR (`replaceCurrentQr`) · ✅ ทำรายการเสร็จแล้ว (`resolveUnknownCompleted`) · 🗑️ ล้างรายการ (`clearItem`) |
+| `FAILED` | 🔄 ลองส่ง QR ใหม่ (`startSharing` — the same intact QR; nothing reached the bank) · 🖼️ เปลี่ยน QR · ⚠️ QR ใช้งานไม่ได้ (`markQrUnusable`) · 🗑️ ล้างรายการ |
+| `REQUIRES_QR_REPLACEMENT` | 🖼️ เปลี่ยน QR · 🗑️ ล้างรายการ |
+
+The two omissions are the point: a QR the user reported unusable is never offered a
+re-send (`reportProblem` marks that version `UNUSABLE`, and both `canStartHandoff`
+and `retryItem` refuse the status), and a `FAILED` item is never offered a
+confirmation (nothing reached the bank, so there is nothing to confirm). ล้างรายการ
+is always last and still goes through the existing `ClearItemDialog`.
+
+So that "clearing always asks first" is testable without a device, the two steps
+now live in the state holder — `QueueUiState.clearingItem(itemId)`,
+`clearItemDismissed()`, `awaitsClearItemConfirmation` — and the ViewModel uses them.
+The ask leaves the queue object itself untouched (`assertSame` in the test).
+
+`ProblemActionButtons` (the local composable that used to be called
+`ProblemActions`, renamed so it cannot shadow the new domain object) renders the
+model list: the first action of a status is the filled button, the rest are
+outlined, and ล้างรายการ is tinted as an error. **ดูรูป** stays available next to it.
+
+### Files changed (V0.9.3)
+
+- `domain/ProblemAction.kt` — **new**: `ProblemAction`, `ProblemActions`.
+- `domain/HomeLayout.kt` — the order of the four payment answers.
+- `ui/QueueScreen.kt` — model-driven `ActionRail` + `RailActionButton`
+  (new), `ProblemActionBand` (renamed), `ProblemActionButtons` /
+  `ProblemActionButton` / `ProblemActionLabel` (rebuilt from the domain model),
+  Home's no-payable-QR card.
+- `ui/QueueViewModel.kt` — `queuedItems` is READY-only; `clearingItem`,
+  `clearItemDismissed`, `awaitsClearItemConfirmation`.
+- `res/values/strings.xml` — `problem_action_rescan`, `home_no_payable_title`,
+  `home_no_payable_body`.
+- `domain/ProblemActionTest.kt` — **new** (14 methods).
+- `ui/ProblemTabActionsTest.kt` — **new** (9 methods).
+- `ui/HomeEditModeTest.kt` — 13 → 17 methods.
+- `README.md`, `docs/REAL_DEVICE_TEST.md`, this file.
+
+No dependency, version-catalog, manifest, Gradle or version change: `versionName`
+stays `0.9.1` / `versionCode 12` as it was before this change, and the CI artifact
+name is unchanged.
+
+## Previous change: V0.9.1 — Edit mode places both action states at once
 
 ### What was actually wrong (root cause, not a workaround)
 
@@ -446,15 +561,15 @@ left/right hand preference.
 ## Tests
 
 Pure JVM JUnit 4, no device, no emulator, no new dependency, no `@Ignore`.
-**236 test methods across 20 classes** (`./gradlew testDebugUnitTest`): the count
-is `grep -c "@Test"` over `app/src/test`, so the two new V0.9 classes
-(`HomeLayoutTest`, `HomeEditModeTest`) are included.
+**269 test methods across 22 classes** (`./gradlew testDebugUnitTest`): the count is
+`grep -c "@Test"` over `app/src/test`, so the two V0.9.3 classes
+(`ProblemActionTest`, `ProblemTabActionsTest`) are included.
 
 | Suite | Methods | Covers |
 | --- | --- | --- |
-| `PaymentQueueTest` | 34 | every valid/invalid transition, ordering, counts, home priority, process death, the V0.9 launch-failure contract |
+| `PaymentQueueTest` | 36 | every valid/invalid transition, ordering, counts, home priority, process death, the V0.9 launch-failure contract |
 | `HomeLayoutTest` | 18 | the layout model: placement, clamping, visibility rules, the QR-image offset, the stored form and every damaged-input path |
-| `HomeEditModeTest` | 13 | what the home screen renders: the active QR area, the queue list below it, edit-mode defaults, element visibility, and which actions each action state can place |
+| `HomeEditModeTest` | 17 | what the home screen renders: the active QR area, the READY-only queue list below it, the fixed order of the four payment answers, edit-mode defaults, element visibility, which actions each action state can place, and that a drag never touches the queue |
 | `QueueImportTest` | 14 | naming, fingerprints, item/version construction, N→N items |
 | `ImportCompletionTest` | 15 | import finishes by itself, summary including duplicates, payment lock |
 | `NavigationBadgeTest` | 14 | three tabs, badge counts, problem/completed tab contents |
@@ -472,6 +587,8 @@ is `grep -c "@Test"` over `app/src/test`, so the two new V0.9 classes
 | `DailyResetTest` | 6 | date format, reset triggering, settings survive a reset |
 | `ShareFallbackTest` | 6 | never a chooser, never another app |
 | `UninstalledBankTest` | 5 | uninstalled bank disables upload, keeps the value |
+| `ProblemActionTest` | 14 | which recovery actions each problem status is offered and which it is refused, each one driven through the real domain transition (V0.9.3) |
+| `ProblemTabActionsTest` | 9 | a reported problem leaving Home while staying in the queue, the ปัญหา action area, and that clearing always asks first (V0.9.3) |
 
 ## Build result
 
@@ -544,6 +661,36 @@ stay absent; a test asserts it.
 7. The daily reset deletes the queue and its images with no undo (by design: it is
    the operational data of one day) — there is no archive.
 8. No instrumented UI tests; no emulator in CI.
+9. `ui/QueueScreen.kt` still defines `ReadyItemCard`, which nothing calls any more
+   (Home lists payable items with `CompactItemCard`). Left as it is deliberately:
+   removing it is cosmetic and the V0.9.3 change is scoped to the rail and to
+   ปัญหา.
+10. A handful of strings are also unused leftovers of V0.5/V0.6 (the
+   `problem_reason_*` set, `home_attention_title`, `notice_item_cleared`, …).
+   Android lint reports them as warnings, not errors.
+
+## What must be tested on a real device (V0.9.3)
+
+**None of it has been run.** The procedure and the expected result of each step are
+in `docs/REAL_DEVICE_TEST.md` (steps 60–67); this is the short list of what the
+change is about:
+
+1. Home's four answers, top to bottom: ⚠ รายงานปัญหา → ✓ ยืนยันสำเร็จ → ? ไม่ทราบผล
+   → ↻ ลองสแกนอีกครั้ง.
+2. Edit mode: the same four (and the scan action) drag without firing, and the
+   positions survive a restart.
+3. **รายงานปัญหา** on Home: the item leaves Home *completely* (not the active QR, not
+   in คิวที่เหลือ), the next payable QR takes the top area on its own, and the item
+   appears in ปัญหา with the badge +1. Nothing is deleted.
+4. In ปัญหา: `UNKNOWN` offers ลองส่ง QR ใหม่ · เปลี่ยน QR · ทำรายการเสร็จแล้ว ·
+   ล้างรายการ; `FAILED` offers ลองส่ง QR ใหม่ · เปลี่ยน QR · QR ใช้งานไม่ได้ ·
+   ล้างรายการ; ต้องเปลี่ยน QR offers only เปลี่ยน QR · ล้างรายการ.
+5. ล้างรายการ always asks first; ยกเลิก keeps the item.
+6. A queue of nothing but problems shows the "ยังไม่มี QR ที่พร้อมส่งไปธนาคาร" card
+   with the count, and no QR panel.
+
+None of this changes the banking behaviour, which is unverified for the same reason
+it always was: no device has ever run this app.
 
 ## Next recommended work
 
@@ -603,9 +750,25 @@ stay absent; a test asserts it.
 - **Never add a second definition of Home's elements.** Placement, visibility and
   the QR-image offset all live in `HomeLayoutConfig` / `HomeLayoutCodec`; the UI
   reads them and must not keep its own copy of any of it.
-- Do not claim a build, APK, CI or device pass that was not observed.
-- **Watch the file-tool size limit.** `str_replace` silently stops matching past
-  roughly the first 64 KB of `ui/QueueScreen.kt` (it reports "old string not
-  found" for text that is plainly there). Split new UI into its own file
+- Do not claim a build, APK, CI or device pass that was not observed.- **Watch the file-tool size limit.** `str_replace` silently stops matching past
+  roughly the first 64 KB of `ui/QueueScreen.kt` (it reports "old string not found"
+  for text that is plainly there). Split new UI into its own file
   (`ui/HomeLayoutUi.kt`) or edit the tail with an asserted, verified script
-  instead of assuming the text is wrong.
+  instead of assuming the text is wrong. (V0.9.3 note: matches at ~67 KB did apply
+  successfully, so the boundary is fuzzy — verify with `awk` before rewriting a big
+  block, and never assume a failed match means the text is absent.)
+- **Do not tighten one property and leave its neighbour.** V0.9.2 made
+  `nextActionItem` READY-only while `queuedItems` still filtered on
+  `status.isActive` (= `!isCompleted`), so a reported item left the top of Home and
+  came straight back in the คิวที่เหลือ list under it. When you change "what Home
+  offers", check every property the screen renders from — and check what is left on
+  screen when the result is "nothing active".
+- **Do not leave a fixed order inside the screen.** The four payment answers' order
+  lived in `ActionRail`'s literal source order, where no test could reach it. An
+  order the product fixes belongs in the model (`HomeElement.railElements`), and the
+  rail must draw the list it is given.
+- **Do not offer a problem status an action its own state refuses.** That mapping is
+  `ProblemActions.availableFor`, and it exists because offering a re-send of a QR
+  the user reported unusable would be a button that silently does nothing (or worse,
+  a way to hand a known-bad QR to the bank). Add an action there, never in the
+  screen.
