@@ -1566,9 +1566,17 @@ private fun FinishedControlPanel(
                     contentDescription = stringResource(R.string.action_import),
                     tint = MaterialTheme.colorScheme.primary,
                 )
-                FinishedSummary(queue = queue, onSelectTab = onSelectTab)
+                FinishedSummary(
+                    queue = queue,
+                    onSelectTab = onSelectTab,
+                    modifier = Modifier.weight(1f),
+                )
             } else {
-                FinishedSummary(queue = queue, onSelectTab = onSelectTab)
+                FinishedSummary(
+                    queue = queue,
+                    onSelectTab = onSelectTab,
+                    modifier = Modifier.weight(1f),
+                )
                 ActionIconButton(
                     onClick = onImportImages,
                     icon = Icons.Outlined.Add,
@@ -1589,9 +1597,10 @@ private fun FinishedControlPanel(
 private fun FinishedSummary(
     queue: PaymentQueue,
     onSelectTab: (QueueTab) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier.weight(1f),
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(Icons.Outlined.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
