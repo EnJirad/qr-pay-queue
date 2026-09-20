@@ -9,6 +9,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
@@ -72,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -95,6 +99,8 @@ import com.enjirad.qrqueue.domain.PaymentQueue
 import com.enjirad.qrqueue.domain.PaymentStatus
 import com.enjirad.qrqueue.domain.QueueItem
 import com.enjirad.qrqueue.domain.HandPreference
+import com.enjirad.qrqueue.domain.HomeElement
+import com.enjirad.qrqueue.domain.HomeLayoutConfig
 import com.enjirad.qrqueue.ui.theme.QrQueueTheme
 import java.io.File
 import java.text.SimpleDateFormat
@@ -134,6 +140,14 @@ data class QueueCallbacks(
     val onClearItem: (String) -> Unit,
     val onClearItemConfirmed: () -> Unit,
     val onClearItemDismissed: () -> Unit,
+    // ---- V0.9 home layout edit mode ----
+    val onEditModeToggled: () -> Unit,
+    val onHomeElementMoved: (HomeElement, Float, Float) -> Unit,
+    val onQrImageMoved: (Float, Float) -> Unit,
+    val onHomeElementVisibilityToggled: (HomeElement) -> Unit,
+    val onResetLayoutRequested: () -> Unit,
+    val onResetLayoutConfirmed: () -> Unit,
+    val onResetLayoutDismissed: () -> Unit,
 )
 
 /** Connects the screen to its ViewModel and to Android's photo picker. */
@@ -219,14 +233,23 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
             onClearItem = viewModel::onClearItemRequested,
             onClearItemConfirmed = viewModel::onClearItemConfirmed,
             onClearItemDismissed = viewModel::onClearItemDismissed,
+            onEditModeToggled = viewModel::onEditModeToggled,
+            onHomeElementMoved = viewModel::onHomeElementMoved,
+            onQrImageMoved = viewModel::onQrImageMoved,
+            onHomeElementVisibilityToggled = viewModel::onHomeElementVisibilityToggled,
+            onResetLayoutRequested = viewModel::onResetLayoutRequested,
+            onResetLayoutConfirmed = viewModel::onResetLayoutConfirmed,
+            onResetLayoutDismissed = viewModel::onResetLayoutDismissed,
         ),
     )
 }
 
 /**
  * Hands the stored image straight to the selected bank, or opens it in a viewer.
- * Returns false when nothing could be opened, so the item can be recorded as
- * failed.
+ *
+ * Returns false when nothing could be opened, so the ViewModel can record a failed
+ * launch attempt — V0.9 §1 keeps the item in its four-action rail in that case; it
+ * is never failed out of the payment flow.
  */
 private fun launchImageIntent(context: Context, request: ImageIntentRequest): Boolean {
     val file = File(request.filePath)
@@ -270,6 +293,8 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         QueueNotice.QUEUE_CLEARED -> stringResource(R.string.notice_queue_cleared)
         QueueNotice.QR_REPLACEMENT_FAILED -> stringResource(R.string.notice_qr_replacement_failed)
         QueueNotice.DAILY_DATA_CLEARED -> stringResource(R.string.notice_daily_data_cleared)
+        QueueNotice.LAYOUT_LOCKED -> stringResource(R.string.notice_layout_locked)
+        QueueNotice.LAYOUT_RESET -> stringResource(R.string.notice_layout_reset)
         null -> null
     }
 
@@ -310,6 +335,13 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
         )
     }
 
+    if (state.layoutResetConfirmationVisible) {
+        ResetLayoutDialog(
+            onConfirm = callbacks.onResetLayoutConfirmed,
+            onDismiss = callbacks.onResetLayoutDismissed,
+        )
+    }
+
     if (state.clearItemConfirmationVisible) {
         val itemLabel = state.itemToClearId?.let { id ->
             state.queue?.item(id)?.itemLabel ?: id
@@ -345,8 +377,10 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
                     AppHeader(
                         handPreference = state.handPreference,
                         homeLocked = state.homeLocked,
+                        editMode = state.homeEditMode,
                         onSettingsRequested = callbacks.onSettingsRequested,
                         onLockToggled = callbacks.onLockToggled,
+                        onEditModeToggled = callbacks.onEditModeToggled,
                     )
                     ProblemsTab(
                         queue = state.queue,
@@ -368,8 +402,10 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
                     AppHeader(
                         handPreference = state.handPreference,
                         homeLocked = state.homeLocked,
+                        editMode = state.homeEditMode,
                         onSettingsRequested = callbacks.onSettingsRequested,
                         onLockToggled = callbacks.onLockToggled,
+                        onEditModeToggled = callbacks.onEditModeToggled,
                     )
                     CompletedTab(queue = state.queue)
                     SafetyCard()
@@ -423,16 +459,20 @@ private fun QueueBottomBar(state: QueueUiState, onSelectTab: (QueueTab) -> Unit)
 private fun AppHeader(
     handPreference: HandPreference,
     homeLocked: Boolean,
+    editMode: Boolean,
     onSettingsRequested: () -> Unit,
     onLockToggled: () -> Unit,
+    onEditModeToggled: () -> Unit,
 ) {
     val iconsEnd = handPreference == HandPreference.RIGHT
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (!iconsEnd) {
             HeaderIcons(
                 homeLocked = homeLocked,
+                editMode = editMode,
                 onSettingsRequested = onSettingsRequested,
                 onLockToggled = onLockToggled,
+                onEditModeToggled = onEditModeToggled,
             )
             Spacer(Modifier.weight(1f))
         } else {
@@ -454,8 +494,10 @@ private fun AppHeader(
         if (iconsEnd) {
             HeaderIcons(
                 homeLocked = homeLocked,
+                editMode = editMode,
                 onSettingsRequested = onSettingsRequested,
                 onLockToggled = onLockToggled,
+                onEditModeToggled = onEditModeToggled,
             )
         } else {
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary) {
@@ -478,8 +520,10 @@ private fun AppHeader(
 @Composable
 private fun HeaderIcons(
     homeLocked: Boolean,
+    editMode: Boolean,
     onSettingsRequested: () -> Unit,
     onLockToggled: () -> Unit,
+    onEditModeToggled: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Surface(
@@ -497,6 +541,33 @@ private fun HeaderIcons(
                     .fillMaxSize()
                     .padding(8.dp),
                 tint = if (homeLocked) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        // V0.9 §3: the Edit control sits right next to Lock — locked means the
+        // layout cannot be changed, edit mode means it can.
+        Surface(
+            onClick = onEditModeToggled,
+            shape = CircleShape,
+            color = if (editMode) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            modifier = Modifier.size(40.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Edit,
+                contentDescription = stringResource(
+                    if (editMode) R.string.action_edit_done else R.string.action_edit,
+                ),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                tint = if (editMode) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -833,9 +904,13 @@ private fun BankSelectionDialog(
 // ---- tab 1: home (V0.7 fixed-position control panel) -----------------------
 
 /**
- * V0.7 Home: a fixed control panel with QR preview on one side and
- * icon-only action buttons on the other. When locked, vertical scrolling
- * is disabled so positions never change.
+ * V0.9 Home: one active QR area with the action rail on the chosen hand's side,
+ * the rest of the open queue listed below it, and an Edit mode that lets the
+ * user move and hide the elements for themselves.
+ *
+ * Scrolling is disabled while the screen is locked (V0.7) **and** while Edit
+ * mode is on, so a drag can never be read as a scroll and the elements the user
+ * is repositioning stay exactly where they are put.
  */
 @Composable
 private fun HomeTab(
@@ -845,7 +920,13 @@ private fun HomeTab(
 ) {
     val leftHanded = state.handPreference == HandPreference.LEFT
     val scrollState = rememberScrollState()
-    val scrollModifier = if (state.homeLocked) Modifier else Modifier.verticalScroll(scrollState)
+    val scrollModifier = if (state.homeLocked || state.homeEditMode) {
+        Modifier
+    } else {
+        Modifier.verticalScroll(scrollState)
+    }
+    val layout = state.homeLayout
+    val editMode = state.homeEditMode
 
     Column(
         modifier = modifier
@@ -857,9 +938,19 @@ private fun HomeTab(
         AppHeader(
             handPreference = state.handPreference,
             homeLocked = state.homeLocked,
+            editMode = editMode,
             onSettingsRequested = callbacks.onSettingsRequested,
             onLockToggled = callbacks.onLockToggled,
+            onEditModeToggled = callbacks.onEditModeToggled,
         )
+        if (editMode) {
+            EditLayoutPanel(
+                layout = layout,
+                onToggleVisibility = callbacks.onHomeElementVisibilityToggled,
+                onResetRequested = callbacks.onResetLayoutRequested,
+                onDone = callbacks.onEditModeToggled,
+            )
+        }
         state.importSummary?.let { summary ->
             ImportSummaryBanner(summary = summary, onDismiss = callbacks.onImportSummaryShown)
         }
@@ -873,7 +964,9 @@ private fun HomeTab(
             return@Column
         }
         val queue = state.queue
-        val currentItem = state.nextActionItem
+        // V0.9 §1: the item that owns the hand-off is the one the top area shows,
+        // so the four actions are always on screen while a payment is in flight.
+        val currentItem = state.activeItem
 
         if (currentItem != null) {
             ControlPanel(
@@ -881,6 +974,10 @@ private fun HomeTab(
                 selectedBank = state.selectedBank,
                 handPreference = state.handPreference,
                 leftHanded = leftHanded,
+                layout = layout,
+                editMode = editMode,
+                onElementMoved = callbacks.onHomeElementMoved,
+                onQrImageMoved = callbacks.onQrImageMoved,
                 callbacks = callbacks,
             )
         } else if (queue != null && queue.finished) {
@@ -890,25 +987,78 @@ private fun HomeTab(
                 onImportImages = callbacks.onImportImages,
             )
         } else if (queue == null) {
-            EmptyHome(canImport = state.canImport, onImportImages = callbacks.onImportImages)
-        }
-        if (queue != null && queue.itemCount > 0) {
-            Text(
-                text = stringResource(R.string.home_progress, queue.completedCount, queue.itemCount),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.outline,
+            EmptyHome(
+                canImport = state.canImport,
+                onImportImages = callbacks.onImportImages,
+                layout = layout,
+                editMode = editMode,
+                onElementMoved = callbacks.onHomeElementMoved,
             )
         }
-        ImportCard(canImport = state.canImport, onImportImages = callbacks.onImportImages)
+        // V0.9 §2: the active QR keeps the top area and every other open item is
+        // listed below it, so a newly imported QR appears here without ever
+        // duplicating or replacing the QR the user is working on.
+        val queuedItems = state.queuedItems
+        if (queue != null && queuedItems.isNotEmpty()) {
+            SectionTitle(
+                text = stringResource(R.string.home_queue_title),
+                badge = queuedItems.size.toString(),
+            )
+            queuedItems.forEach { item ->
+                CompactItemCard(item = item, queue = queue, callbacks = callbacks)
+            }
+        }
+        if (queue != null && queue.itemCount > 0 && layout.isVisible(HomeElement.PROGRESS)) {
+            val progressQueue = queue
+            HomeElementBox(
+                element = HomeElement.PROGRESS,
+                layout = layout,
+                editMode = editMode,
+                onMove = callbacks.onHomeElementMoved,
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.home_progress,
+                        progressQueue.completedCount,
+                        progressQueue.itemCount,
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
+        ImportCard(
+            canImport = state.canImport,
+            onImportImages = callbacks.onImportImages,
+            layout = layout,
+            editMode = editMode,
+            onElementMoved = callbacks.onHomeElementMoved,
+        )
         TextButton(onClick = callbacks.onClearRequested) {
             Text(text = stringResource(R.string.action_clear_queue))
         }
-        SafetyCard()
+        if (layout.isVisible(HomeElement.GUIDANCE)) {
+            HomeElementBox(
+                element = HomeElement.GUIDANCE,
+                layout = layout,
+                editMode = editMode,
+                onMove = callbacks.onHomeElementMoved,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                SafetyCard()
+            }
+        }
     }
 }
 
 @Composable
-private fun EmptyHome(canImport: Boolean, onImportImages: () -> Unit) {
+private fun EmptyHome(
+    canImport: Boolean,
+    onImportImages: () -> Unit,
+    layout: HomeLayoutConfig = HomeLayoutConfig.DEFAULT,
+    editMode: Boolean = false,
+    onElementMoved: (HomeElement, Float, Float) -> Unit = { _, _, _ -> },
+) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -941,7 +1091,13 @@ private fun EmptyHome(canImport: Boolean, onImportImages: () -> Unit) {
         }
     }
 
-    ImportCard(canImport = canImport, onImportImages = onImportImages)
+    ImportCard(
+        canImport = canImport,
+        onImportImages = onImportImages,
+        layout = layout,
+        editMode = editMode,
+        onElementMoved = onElementMoved,
+    )
 
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -976,7 +1132,13 @@ private fun EmptyHome(canImport: Boolean, onImportImages: () -> Unit) {
 }
 
 @Composable
-private fun ImportCard(canImport: Boolean, onImportImages: () -> Unit) {
+private fun ImportCard(
+    canImport: Boolean,
+    onImportImages: () -> Unit,
+    layout: HomeLayoutConfig = HomeLayoutConfig.DEFAULT,
+    editMode: Boolean = false,
+    onElementMoved: (HomeElement, Float, Float) -> Unit = { _, _, _ -> },
+) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -984,39 +1146,60 @@ private fun ImportCard(canImport: Boolean, onImportImages: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Button(
-                onClick = onImportImages,
-                enabled = canImport,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
+            // The add-QR action is one of the movable elements (V0.9 §3.6). In
+            // normal mode it does exactly what it always did; in edit mode the
+            // touch moves it instead of importing.
+            HomeElementBox(
+                element = HomeElement.ADD_QR,
+                layout = layout,
+                editMode = editMode,
+                onMove = onElementMoved,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.action_import),
-                    style = MaterialTheme.typography.labelLarge,
-                )
+                Button(
+                    onClick = { if (!editMode) onImportImages() },
+                    enabled = canImport,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.action_import),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
             }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = if (canImport) {
-                    stringResource(R.string.action_import_hint)
-                } else {
-                    stringResource(R.string.action_import_disabled_hint)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = if (canImport) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                },
-            )
+            if (layout.isVisible(HomeElement.IMPORT_HINT)) {
+                Spacer(Modifier.height(10.dp))
+                HomeElementBox(
+                    element = HomeElement.IMPORT_HINT,
+                    layout = layout,
+                    editMode = editMode,
+                    onMove = onElementMoved,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = if (canImport) {
+                            stringResource(R.string.action_import_hint)
+                        } else {
+                            stringResource(R.string.action_import_disabled_hint)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (canImport) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -1033,10 +1216,17 @@ private fun ControlPanel(
     selectedBank: BankInfo?,
     handPreference: HandPreference,
     leftHanded: Boolean,
+    layout: HomeLayoutConfig,
+    editMode: Boolean,
+    onElementMoved: (HomeElement, Float, Float) -> Unit,
+    onQrImageMoved: (Float, Float) -> Unit,
     callbacks: QueueCallbacks,
 ) {
     val isReady = item.status == PaymentStatus.READY
-    val isAwaiting = item.status == PaymentStatus.AWAITING_USER_CONFIRMATION
+    // V0.9 §1: a hand-off in flight shows the same four actions as one awaiting
+    // the user's answer, so the rail can never collapse into an empty panel.
+    val isAwaiting = item.status == PaymentStatus.AWAITING_USER_CONFIRMATION ||
+        item.status == PaymentStatus.SHARING
     val isProblem = item.status.isProblem
 
     Surface(
@@ -1066,17 +1256,37 @@ private fun ControlPanel(
                     isReady = isReady,
                     isAwaiting = isAwaiting,
                     isProblem = isProblem,
+                    layout = layout,
+                    editMode = editMode,
+                    onElementMoved = onElementMoved,
                     callbacks = callbacks,
                 )
-                QrPreviewArea(item = item, modifier = Modifier.weight(1f).height(300.dp))
+                QrPreviewSlot(
+                    item = item,
+                    layout = layout,
+                    editMode = editMode,
+                    onElementMoved = onElementMoved,
+                    onQrImageMoved = onQrImageMoved,
+                    modifier = Modifier.weight(1f).height(300.dp),
+                )
             } else {
-                QrPreviewArea(item = item, modifier = Modifier.weight(1f).height(300.dp))
+                QrPreviewSlot(
+                    item = item,
+                    layout = layout,
+                    editMode = editMode,
+                    onElementMoved = onElementMoved,
+                    onQrImageMoved = onQrImageMoved,
+                    modifier = Modifier.weight(1f).height(300.dp),
+                )
                 ActionRail(
                     item = item,
                     selectedBank = selectedBank,
                     isReady = isReady,
                     isAwaiting = isAwaiting,
                     isProblem = isProblem,
+                    layout = layout,
+                    editMode = editMode,
+                    onElementMoved = onElementMoved,
                     callbacks = callbacks,
                 )
             }
@@ -1084,18 +1294,71 @@ private fun ControlPanel(
     }
 }
 
+/**
+ * The active QR area: the movable QR element plus, when a launch did not reach
+ * the bank, the reason as a caption (V0.9 §1: the notice must not exist only as
+ * a transient snackbar).
+ */
 @Composable
-private fun QrPreviewArea(item: QueueItem, modifier: Modifier = Modifier) {
+private fun QrPreviewSlot(
+    item: QueueItem,
+    layout: HomeLayoutConfig,
+    editMode: Boolean,
+    onElementMoved: (HomeElement, Float, Float) -> Unit,
+    onQrImageMoved: (Float, Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (!layout.isVisible(HomeElement.QR_IMAGE)) return
+    HomeElementBox(
+        element = HomeElement.QR_IMAGE,
+        layout = layout,
+        editMode = editMode,
+        onMove = onElementMoved,
+        modifier = modifier,
+    ) {
+        QrPreviewArea(
+            item = item,
+            layout = layout,
+            editMode = editMode,
+            onQrImageMoved = onQrImageMoved,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+private fun QrPreviewArea(
+    item: QueueItem,
+    layout: HomeLayoutConfig = HomeLayoutConfig.DEFAULT,
+    editMode: Boolean = false,
+    onQrImageMoved: (Float, Float) -> Unit = { _, _ -> },
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         QrImagePreview(
             path = item.previewFilePath,
+            imageOffsetX = layout.qrImageOffsetX,
+            imageOffsetY = layout.qrImageOffsetY,
+            editMode = editMode,
+            onImageMoved = onQrImageMoved,
             modifier = Modifier.fillMaxWidth().weight(1f),
         )
         Spacer(Modifier.height(8.dp))
         Text(text = item.itemLabel, style = MaterialTheme.typography.titleMedium)
+        val detail = item.failureDetail
+        if (detail != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+            )
+        }
     }
 }
 
@@ -1106,6 +1369,9 @@ private fun ActionRail(
     isReady: Boolean,
     isAwaiting: Boolean,
     isProblem: Boolean,
+    layout: HomeLayoutConfig,
+    editMode: Boolean,
+    onElementMoved: (HomeElement, Float, Float) -> Unit,
     callbacks: QueueCallbacks,
 ) {
     Column(
@@ -1116,67 +1382,115 @@ private fun ActionRail(
         when {
             isReady -> {
                 // V0.7 §4: single scan icon to send QR to the selected bank.
-                // Using Share icon with QR content description since qr_code_scanner
-                // is not available in material-icons-core.
-                IconButton(
-                    onClick = { callbacks.onShareItem(item.id) },
-                    modifier = Modifier
-                        .size(72.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                // V0.9 §3.3: in edit mode the same touch moves the icon instead of
+                // starting a hand-off.
+                HomeElementBox(
+                    element = HomeElement.SCAN_ACTION,
+                    layout = layout,
+                    editMode = editMode,
+                    onMove = onElementMoved,
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Share,
-                        contentDescription = stringResource(R.string.action_scan),
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                    )
+                    IconButton(
+                        onClick = { if (!editMode) callbacks.onShareItem(item.id) },
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Share,
+                            contentDescription = stringResource(R.string.action_scan),
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                 }
             }
             isAwaiting -> {
                 // V0.7 §5–§6: four action icons in fixed order.
                 // §18/§20: order is always ✓, ⚠, ?, ↻ — muscle memory.
-                ActionIconButton(
-                    onClick = { callbacks.onConfirmCompleted(item.id) },
-                    icon = Icons.Outlined.CheckCircle,
-                    contentDescription = stringResource(R.string.action_confirm_completed),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                HomeElementBox(
+                    element = HomeElement.CONFIRM_ACTION,
+                    layout = layout,
+                    editMode = editMode,
+                    onMove = onElementMoved,
+                ) {
+                    ActionIconButton(
+                        onClick = { if (!editMode) callbacks.onConfirmCompleted(item.id) },
+                        icon = Icons.Outlined.CheckCircle,
+                        contentDescription = stringResource(R.string.action_confirm_completed),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
-                ActionIconButton(
-                    onClick = { callbacks.onReportProblem(item.id) },
-                    icon = Icons.Outlined.Warning,
-                    contentDescription = stringResource(R.string.action_report_problem),
-                    tint = MaterialTheme.colorScheme.error,
-                )
+                HomeElementBox(
+                    element = HomeElement.WARNING_ACTION,
+                    layout = layout,
+                    editMode = editMode,
+                    onMove = onElementMoved,
+                ) {
+                    ActionIconButton(
+                        onClick = { if (!editMode) callbacks.onReportProblem(item.id) },
+                        icon = Icons.Outlined.Warning,
+                        contentDescription = stringResource(R.string.action_report_problem),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
-                ActionIconButton(
-                    onClick = { callbacks.onMarkUnknown(item.id) },
-                    icon = Icons.Outlined.Info,
-                    contentDescription = stringResource(R.string.action_unknown),
-                    tint = MaterialTheme.colorScheme.tertiary,
-                )
+                HomeElementBox(
+                    element = HomeElement.UNKNOWN_ACTION,
+                    layout = layout,
+                    editMode = editMode,
+                    onMove = onElementMoved,
+                ) {
+                    ActionIconButton(
+                        onClick = { if (!editMode) callbacks.onMarkUnknown(item.id) },
+                        icon = Icons.Outlined.Info,
+                        contentDescription = stringResource(R.string.action_unknown),
+                        tint = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
-                // §11–§15: retry — re-shares the same QR to the bank.
-                ActionIconButton(
-                    onClick = { callbacks.onRetryShare(item.id) },
-                    icon = Icons.Outlined.Refresh,
-                    contentDescription = stringResource(R.string.action_retry_share),
-                    tint = MaterialTheme.colorScheme.secondary,
-                )
+                // §11–§15: retry — opens the bank again with the same QR. The item
+                // does not move and nothing is completed by it.
+                HomeElementBox(
+                    element = HomeElement.RETRY_ACTION,
+                    layout = layout,
+                    editMode = editMode,
+                    onMove = onElementMoved,
+                ) {
+                    ActionIconButton(
+                        onClick = { if (!editMode) callbacks.onRetryShare(item.id) },
+                        icon = Icons.Outlined.Refresh,
+                        contentDescription = stringResource(R.string.action_retry_share),
+                        tint = MaterialTheme.colorScheme.secondary,
+                    )
+                }
             }
             isProblem -> {
-                ActionIconButton(
-                    onClick = {
-                        if (item.status.requiresQrReplacement) callbacks.onReplaceQr(item.id)
-                        else callbacks.onRetryItem(item.id)
-                    },
-                    icon = Icons.Outlined.Refresh,
-                    contentDescription = stringResource(
-                        if (item.status.requiresQrReplacement) R.string.action_replace_qr
-                        else R.string.action_retry,
-                    ),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                HomeElementBox(
+                    element = HomeElement.RETRY_ACTION,
+                    layout = layout,
+                    editMode = editMode,
+                    onMove = onElementMoved,
+                ) {
+                    ActionIconButton(
+                        onClick = {
+                            if (editMode) {
+                                Unit
+                            } else if (item.status.requiresQrReplacement) {
+                                callbacks.onReplaceQr(item.id)
+                            } else {
+                                callbacks.onRetryItem(item.id)
+                            }
+                        },
+                        icon = Icons.Outlined.Refresh,
+                        contentDescription = stringResource(
+                            if (item.status.requiresQrReplacement) R.string.action_replace_qr
+                            else R.string.action_retry,
+                        ),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         }
     }
@@ -1974,7 +2288,14 @@ private fun ClearQueueDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun QrImagePreview(path: String?, modifier: Modifier = Modifier) {
+private fun QrImagePreview(
+    path: String?,
+    modifier: Modifier = Modifier,
+    imageOffsetX: Float = 0f,
+    imageOffsetY: Float = 0f,
+    editMode: Boolean = false,
+    onImageMoved: (Float, Float) -> Unit = { _, _ -> },
+) {
     val imageState = remember(path) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(path) {
         imageState.value = if (path.isNullOrEmpty()) {
@@ -2009,9 +2330,31 @@ private fun QrImagePreview(path: String?, modifier: Modifier = Modifier) {
             Image(
                 bitmap = bitmap,
                 contentDescription = stringResource(R.string.image_description),
+                // V0.9 3.5: the QR image can be nudged inside its frame, and only
+                // inside it - the frame clips, ContentScale.Fit keeps the aspect
+                // ratio and HomeLayoutConfig clamps the offset, so the code can
+                // never be dragged out of view.
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(4.dp),
+                    .padding(4.dp)
+                    .offset(x = imageOffsetX.dp, y = imageOffsetY.dp)
+                    .then(
+                        if (!editMode) {
+                            Modifier
+                        } else {
+                            Modifier.pointerInput(editMode) {
+                                detectDragGestures(
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        onImageMoved(
+                                            dragAmount.x.toDp().value,
+                                            dragAmount.y.toDp().value,
+                                        )
+                                    },
+                                )
+                            }
+                        },
+                    ),
                 contentScale = ContentScale.Fit,
             )
         }
@@ -2241,4 +2584,11 @@ private fun previewCallbacks(): QueueCallbacks = QueueCallbacks(
     onClearItem = {},
     onClearItemConfirmed = {},
     onClearItemDismissed = {},
+    onEditModeToggled = {},
+    onHomeElementMoved = { _, _, _ -> },
+    onQrImageMoved = { _, _ -> },
+    onHomeElementVisibilityToggled = {},
+    onResetLayoutRequested = {},
+    onResetLayoutConfirmed = {},
+    onResetLayoutDismissed = {},
 )

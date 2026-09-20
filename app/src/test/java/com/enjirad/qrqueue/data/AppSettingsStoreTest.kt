@@ -101,6 +101,28 @@ class InMemoryAppSettingsStoreTest {
         store.saveHomeLocked(false)
         assertFalse(store.loadHomeLocked())
     }
+
+    // ---- home layout (V0.9) ----
+
+    @Test
+    fun `default home layout is null so the app uses its own`() {
+        assertNull(store.loadHomeLayout())
+    }
+
+    @Test
+    fun `saveHomeLayout persists the encoded layout`() {
+        store.saveHomeLayout("v1|PROGRESS:10.0:-4.0:0|qr:3.0:5.0")
+
+        assertEquals("v1|PROGRESS:10.0:-4.0:0|qr:3.0:5.0", store.loadHomeLayout())
+    }
+
+    @Test
+    fun `saveHomeLayout overwrites the previous layout`() {
+        store.saveHomeLayout("v1|PROGRESS:10.0:0.0:1")
+        store.saveHomeLayout("v1")
+
+        assertEquals("v1", store.loadHomeLayout())
+    }
 }
 
 /**
@@ -111,6 +133,7 @@ class InMemoryAppSettingsStore : AppSettingsStore {
     private var autoReset: Boolean = false
     private var lastResetDate: String? = null
     private var homeLocked: Boolean = false
+    private var homeLayout: String? = null
 
     override fun saveHandPreference(pref: HandPreference): Boolean {
         handPref = pref
@@ -139,4 +162,11 @@ class InMemoryAppSettingsStore : AppSettingsStore {
     }
 
     override fun loadHomeLocked(): Boolean = homeLocked
+
+    override fun saveHomeLayout(encoded: String): Boolean {
+        homeLayout = encoded
+        return true
+    }
+
+    override fun loadHomeLayout(): String? = homeLayout
 }

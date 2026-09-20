@@ -65,7 +65,7 @@ QR Payment Queue walks you through a batch of QR payment screenshots — one
 | Architecture | Single activity, AndroidX, ViewModel + StateFlow, domain/UI separation |
 | Build | Gradle (Kotlin DSL), Android Gradle Plugin 8.7.3 |
 | Package | `com.enjirad.qrqueue` |
-| App version | 0.6.0 (versionCode 8) |
+| App version | 0.9.0 (versionCode 11) |
 | QR decoding | **None.** No QR library is used or depended on. |
 | Persistence | App-private JSON queue + SharedPreferences for the bank selection and settings + copied images |
 | CI | GitHub Actions (`testDebugUnitTest`, `lintDebug`, `assembleDebug`, APK artifact) |
@@ -121,9 +121,20 @@ its own QR v1. An image whose bytes are already in the queue is skipped.
 
 ### 3. Share one item at a time
 
-Pick the item you want to pay next and tap **ชำระเงิน**. The app builds a
-standard `ACTION_SEND` image share addressed to the selected bank's Android
-package, so the bank opens directly — no chooser, no app picking.
+Pick the item you want to pay next and tap the scan button. The app does two
+things, in this order:
+
+1. The item becomes **AWAITING_USER_CONFIRMATION** straight away, so the four
+actions (✓ ⚠ ? ↻) are on screen immediately — before anything is launched.
+2. It then builds a standard `ACTION_SEND` image share addressed to the selected
+bank's Android package and tries to open it directly — no chooser, no app
+picking.
+
+If the bank app cannot be opened (not installed, no image-share activity, intent
+unresolvable, stored image gone) the four actions **stay exactly where they
+are**: the app records the failed attempt, explains it with a message under the
+QR, and waits for you. Nothing is marked `FAILED`, and the ↻ button re-opens the
+bank with the same QR whenever you want.
 
 ```
 QR image (app-private copy)
@@ -135,14 +146,16 @@ Intent.ACTION_SEND + EXTRA_STREAM + image MIME + setPackage(selectedBank)
 Bank app (opens directly)
 ```
 
-The app re-checks the selected bank on the device right before launch: the
-package must still be installed and the intent must resolve to it. If it cannot
-be opened, the item is marked `FAILED` with an explanation — the app **never**
+The app re-checks the selected bank on the device immediately before launch: the
+package must still be installed and the intent must resolve to it. It **never**
 falls back to Android's "share with…" chooser and never opens another app.
 
-While the hand-off is launching the item is `SHARING` (the payment button is
-locked so rapid taps cannot start a second attempt); once the bank received it
-the item becomes `AWAITING_USER_CONFIRMATION`.
+### 3b. Retry the same QR
+
+**↻** opens the bank again with the same QR: same Payment Item, same queue
+position, same QR version — no duplicate item, no new QR, and no change to the
+item's state. You can retry as often as you like; each retry is recorded as its
+own attempt.
 
 ### 4. Pay in the bank app
 
@@ -214,12 +227,60 @@ The manual action does the same immediately, after a confirmation. The queue is
 never reset while the app is running and nothing is deleted unless the date really
 changed.
 
+## The home screen
+
+The home tab is one **active QR area** plus the queue below it:
+
+```
+┌─────────────────────────────────┐
+│  ⚙ 🔒 ✎                        │
+│                                 │
+│   ╭───────────────╮  ┌────────┐ │
+│   │               │  │   ✓    │ │
+│   │   ACTIVE QR   │  ├────────┤ │
+│   │               │  │   ⚠    │ │
+│   ╰───────────────╯  ├────────┤ │
+│   QR #01            │   ?    │ │
+│                     ├────────┤ │
+│                     │   ↻    │ │
+│                     └────────┘ │
+│                                 │
+│   คิวที่เหลือ           2        │
+│   QR #02   รอชำระ    [ชำระเงิน]  │
+│   QR #03   รอชำระ    [ชำระเงิน]  │
+└─────────────────────────────────┘
+```
+
+The item that owns the hand-off (the payment you are in the middle of) always
+takes the top area, so its four actions are never hidden behind another item.
+Everything else that is still open is listed below, in queue order.
+
+### Edit the layout
+
+**✎** next to the lock icon turns on **Edit mode**:
+
+- **Drag** the QR frame, the scan / ✓ / ⚠ / ? / ↻ buttons, the add-QR button, the
+  safety text, the import hint and the progress caption to wherever you want
+  them. Nothing can be dragged off the screen, and dragging never triggers the
+  action underneath it.
+- **Show / hide** the guidance text, the import hint and the progress caption
+  from the panel (and from the control on each element). The actions that pay, or
+  confirm, or replace a QR cannot be hidden — the model marks them non-hideable
+  and refuses.
+- **Nudge the QR image inside its frame** by dragging it; the frame clips and the
+  aspect ratio is kept, so the code cannot be dragged out of view.
+- **รีเซ็ตผัง** restores the app's own layout after a confirmation.
+
+Everything you change is saved immediately and survives restarts. **🔒** locks
+the layout (and leaves Edit mode): while Home is locked nothing can be dragged,
+which is also why scrolling is disabled in both modes.
+
 ## Queue states
 
 | State | Meaning |
 | --- | --- |
 | `READY` | 🕐 รอชำระ — the QR is in the queue and has not been submitted yet. |
-| `SHARING` | The QR is being handed to the bank app right now (the action is locked). |
+| `SHARING` | The hand-off is being started (internal: V0.9 persists the item already in the awaiting state, and the four actions are on screen). |
 | `AWAITING_USER_CONFIRMATION` | The bank has the QR; the app is waiting for **your** answer. |
 | `COMPLETED` | ✓ ชำระแล้ว — you pressed **ทำรายการเสร็จแล้ว**. The only finished state. |
 | `FAILED` | A failure in this app: the file is missing, the intent could not be built, or the bank could not be opened. Nothing reached the bank. |
@@ -345,7 +406,7 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`
 ## CI and APK artifact
 
 GitHub Actions runs on every push: unit tests, lint, assembleDebug, APK
-verification, then upload as **`qr-payment-queue-v0.6.0-debug`**. A failing
+verification, then upload as **`qr-payment-queue-v0.9.0-debug`**. A failing
 test, lint run or build fails the workflow.
 
 ## Verification status
@@ -361,10 +422,14 @@ test, lint run or build fails the workflow.
   confirms it.
 - Green CI means compile, unit test, lint and APK packaging only: no screen of
   this app has ever been rendered, so it is not a device pass.
-- The test suite is now 190 test methods across 18 classes (state machine, badge,
-  QR replacement and QR-version history, duplicate skipping, double-payment
-  protection, direct-share contract, persistence, upload gate, fallback, settings
-  and daily reset).
+- The test suite is 230 test methods across 20 classes (state machine, the V0.9
+  launch-failure contract, badge, QR replacement and QR-version history, duplicate
+  skipping, double-payment protection, direct-share contract, persistence, upload
+  gate, fallback, settings, daily reset, and the home layout model/codec).
+- V0.9 changes the payment hand-off and adds the home layout: an item is put into
+  `AWAITING_USER_CONFIRMATION` before the bank app is launched, so the four
+actions appear immediately and a failed launch keeps them (it is recorded as an
+attempt, never as a `FAILED` item).
 - The whole UI — the three tabs, the badge, the one-handed action band, the
   settings dialog, the problem-reasons sheet, the replace-QR picker and the
   confirm panel — is **NOT YET VERIFIED ON A REAL DEVICE**: no Compose screen has
@@ -396,6 +461,9 @@ test, lint run or build fails the workflow.
 | V0.4.1 (0.4.1) | Home-screen queue, direct K PLUS, no chooser | superseded |
 | V0.4.2 (0.4.2) | Bank selection, persistent bank, upload gate, generalized share | delivered |
 | V0.5.0 (0.5.0) | Three tabs, item state machine, problem badge, replace QR, explicit confirmation | delivered |
-| **V0.6.0 (0.6.0)** | **One-handed thumb zone, settings, problem reasons, clear item, daily reset** | **delivered — CI green, device test pending** |
+| V0.6.0 (0.6.0) | One-handed thumb zone, settings, problem reasons, clear item, daily reset | delivered |
+| V0.7.0 (0.7.0) | Fixed-position control panel, screen lock, one-tap problem flow | delivered |
+| V0.8.0 (0.8.0) | 4-action one-handed payment flow with retry re-share | delivered |
+| **V0.9.0 (0.9.0)** | **Immediate four-action hand-off (the launch never decides the rail) + home layout Edit mode (drag, hide/show, QR-image offset, reset)** | **see CI** |
 | V1.0 | Optional verified reconciliation with official bank API | planned |
 | — | Real-device verification of the tabs, the one-handed layout and the share flow | not yet done |

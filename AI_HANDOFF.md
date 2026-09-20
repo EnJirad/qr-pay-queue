@@ -16,9 +16,13 @@ private bank API, no QR decoder, no automatic payment confirmation.
 
 ## Current version
 
-**0.8.0 (versionCode 10)** — fixed-position control panel, 4-action one-handed payment flow,
-QR preview opposite action side, screen lock, one-tap problem flow (no reason
-sheet), segmented hand selector in settings, lazy daily reset.
+**0.9.0 (versionCode 11)** — the hand-off now enters AWAITING_USER_CONFIRMATION
+*before* the bank app is launched (the four actions appear immediately and no
+launch result can remove them), Home keeps one active QR area with the rest of
+the queue listed below it, and Home has an Edit mode (drag & drop placement,
+per-element show/hide, QR-image offset inside its frame, reset layout — all
+persisted). Plus everything from V0.8: fixed-position control panel, one-tap
+problem flow, screen lock, hand selector, lazy daily reset.
 
 ## CI status right now (read this first)
 
@@ -49,7 +53,112 @@ All three were fixed at their cause by `6f4a032` (below) and CI has confirmed it
 That run proves **compile + unit test + lint + APK packaging only** — no screen of
 this app has still ever been rendered, so nothing here is a device pass.
 
-## Latest change: the V0.8 retry tests could not compile (fixed)
+## Latest change: V0.9 — QR hand-off flow + home layout Edit mode
+
+### 1. The four actions no longer depend on the launch (§1 of the request)
+
+`QueueViewModel.onShareItemRequested` now does exactly two steps, in this order:
+
+1. `beginHandOff` → `enterAwaiting(itemId)` runs both transitions inside the
+   ViewModel and saves **once, already in the four-button state**:
+   `PaymentQueue.startSharing` (READY/FAILED → **SHARING**, records the `STARTED`
+   attempt) then `PaymentQueue.shareLaunched` (SHARING →
+   **AWAITING_USER_CONFIRMATION**, records `LAUNCHED`). That single `persist` call
+   is what puts the rail on screen, and it happens **before any `Intent` exists**.
+2. Only then is the selected bank re-probed (`BankTarget.query` + `preflight`) and
+   the one-shot `imageIntent` published for the Compose effect to launch.
+
+Every failure path is now `PaymentQueue.recordLaunchFailed` (new in V0.9), which
+records a `FAILED` attempt, keeps the reason in `failureDetail` (rendered under the
+QR) and **leaves the item in AWAITING_USER_CONFIRMATION** while showing a notice:
+no bank selected, bank not installed, hand-off intent unresolvable, or the stored
+image is gone. A launch callback with `launched == false` takes the same path.
+**A failed launch can no longer turn the item into `FAILED`**, so the rail
+(✓ ⚠ ? ↻) and the ↻ retry action always survive it, and no item is ever removed
+from the pay flow because an external app would not open.
+
+`shareLaunched` only accepts an item that is SHARING, so a duplicated launch
+callback is refused instead of inflating the history
+(`DoublePaymentTest.theLaunchIsRecordedOnlyOnce`). `retryShare` is AWAITING →
+SHARING → AWAITING (one `persist` in the ViewModel) with a new `STARTED` attempt:
+same QR, same Payment Item, same position, four actions still on screen.
+
+One deliberate asymmetry, for whoever reads the attempt history next: the
+`LAUNCHED` attempt is written **before** Android actually launches, because the
+item must already be awaiting when anything is launched. When Android refuses, a
+`FAILED` attempt is appended after it, so the last record is always the truth.
+`failItem` still exists for a failure *before* any hand-off (the preview file of
+`onViewItemRequested` is gone); that path does not own the rail and still moves a
+READY item to `FAILED`.
+
+There was **no lifecycle dependency to remove**: a grep of `app/src` shows the
+ViewModel never used `ON_RESUME`, `LifecycleEventObserver` or
+`onBankAppReturnedToForeground`; the launch result is reported by the Compose
+effect that calls `onImageIntentLaunched`. `PaymentStatus.SHARING` is kept (it is
+what a queue written mid-hand-off by an older version holds, and `resolveInterrupted`
+still maps it to `UNKNOWN`), but V0.9 never *persists* it (the queue is saved after
+both transitions, already awaiting), and the rail renders the four actions for it
+as well (`isAwaiting` covers SHARING) so no hand-off state can show an empty panel.
+
+### 2. Home had no panel at all for an item that owns the hand-off (real bug)
+
+`PaymentQueue.nextActionItem` deliberately skips in-flight items —
+`PaymentQueueTest.anItemAwaitingConfirmationIsNotOfferedAsTheNextNewAction`
+asserts it — and `HomeTab` rendered its QR panel *only* from `nextActionItem`.
+So once the user tapped the scan button, a queue whose only item was awaiting an
+answer rendered **no control panel at all**: the four actions the brief asks for
+could never appear. `QueueUiState.activeItem` (= `awaitingAnswerItem ?:
+nextActionItem`) now feeds the top QR area, and `queuedItems` lists every other
+open item below it.
+
+### 3. Home layout (parts 2 and 3 of the request)
+
+- **One active QR area.** The top shows the active QR (see above); every other
+  open item is listed below it with the existing `CompactItemCard`, so a newly
+  imported QR joins the list and the QR the user is working on is never replaced
+  or duplicated. `QueueUiState.queuedItems` is pure and unit-tested; the domain is
+  untouched here (`nextActionItem` / `awaitingAnswerItem` already existed).
+- **Edit mode.** An Edit control sits next to Lock in the header
+  (`[Lock] [Edit]`). In edit mode: elements are draggable one-handed
+  (`HomeElementBox` + `detectDragGestures`, drag consumed so it can never reach
+  the action underneath), each draggable element is outlined, and the
+  `EditLayoutPanel` lists every hideable element with a show/hide control so a
+  hidden element can always be brought back. Scrolling is disabled in edit mode,
+  exactly like when Home is locked, so a drag is never read as a scroll.
+- **Movable elements** (`HomeElement`): QR image, scan action, confirm, warning,
+  unknown, retry and add-QR are draggable and **non-hideable** (the model says
+  so); guidance, the import hint and the progress caption are draggable *and*
+  hideable. A stored value can never hide a protected element —
+  `HomeLayoutConfig.setVisible` refuses it, and a test asserts it.
+- **QR image inside its frame.** The image can be dragged inside the frame
+  (clipped by the frame's shape, `ContentScale.Fit` keeps the aspect ratio) and
+  the offset is clamped to ±96 dp, so the code can never be dragged out of view.
+- **Persistence.** `HomeLayoutCodec` encodes the whole layout as one string into
+  the existing `AppSettingsStore` SharedPreferences file (no database, no new
+  store). Anything unreadable decodes to `HomeLayoutConfig.DEFAULT`, so an
+  existing user opens the app exactly as before.
+- **Reset.** `EditLayoutPanel → รีเซ็ตผัง` asks for confirmation and then restores
+  every placement, visibility and the QR-image offset. Lock blocks editing and
+  reset (with a notice), and locking Home leaves edit mode.
+
+### 4. Tests changed for the new contract (no assertion weakened)
+
+- `PaymentQueueTest` (+2, now 34):
+  `aLaunchThatNeverReachedTheBankKeepsTheItemAndItsFourActions` (the rail, the
+  retry action and the queue position all survive a launch that never reached the
+  bank, which is recorded as a `FAILED` attempt and nothing else) and
+  `aLaunchFailureIsOnlyRecordedWhileTheItemWaitsForAnAnswer` (a stale callback is
+  refused for a READY item and cannot reopen a completed one). No existing
+  assertion was weakened or deleted.
+- `HomeLayoutTest` (new, 18) and `HomeEditModeTest` (new, 7) cover the layout
+  model/codec and the home-screen state (which QR the top area shows, the list
+  below it, edit-mode defaults, element visibility).
+- `DoublePaymentTest` (8) and `PaymentConfirmationTest` (10) were **left exactly as
+  they were** on purpose: they exercise `failItem`, which still exists for a
+  failure that happens before any hand-off. The launch path got its own new test
+  instead of rewriting theirs.
+
+## Previous change: the V0.8 retry tests could not compile (fixed)
 
 `3e16238` added seven `retryShare` tests that call `TestFixtures.readyItem(...)`,
 a helper that exists nowhere in `app/src/test`: `TestFixtures.kt` defines the
@@ -270,11 +379,15 @@ left/right hand preference.
 ## Tests
 
 Pure JVM JUnit 4, no device, no emulator, no new dependency, no `@Ignore`.
-**190 test methods across 18 classes** (`./gradlew testDebugUnitTest`).
+**230 test methods across 20 classes** (`./gradlew testDebugUnitTest`): the count
+is `grep -c "@Test"` over `app/src/test`, so the two new V0.9 classes
+(`HomeLayoutTest`, `HomeEditModeTest`) are included.
 
 | Suite | Methods | Covers |
 | --- | --- | --- |
-| `PaymentQueueTest` | 25 | every valid/invalid transition, ordering, counts, home priority, process death |
+| `PaymentQueueTest` | 34 | every valid/invalid transition, ordering, counts, home priority, process death, the V0.9 launch-failure contract |
+| `HomeLayoutTest` | 18 | the layout model: placement, clamping, visibility rules, the QR-image offset, the stored form and every damaged-input path |
+| `HomeEditModeTest` | 7 | what the home screen renders: the active QR area, the queue list below it, edit-mode defaults, element visibility |
 | `QueueImportTest` | 14 | naming, fingerprints, item/version construction, N→N items |
 | `ImportCompletionTest` | 15 | import finishes by itself, summary including duplicates, payment lock |
 | `NavigationBadgeTest` | 14 | three tabs, badge counts, problem/completed tab contents |
@@ -413,4 +526,19 @@ stay absent; a test asserts it.
 - Never write the literal `image/*` inside a Kotlin block comment (KDoc): Kotlin
   nests block comments, so it silently breaks the file. This cost one CI run in an
   earlier change.
+- **Do not make the four actions depend on anything the app cannot control.** The
+  item enters AWAITING_USER_CONFIRMATION first and the launch is attempted second;
+  a failed launch is recorded as an attempt (`recordLaunchFailed`), never as a
+  `FAILED` item, because a `FAILED` item loses the rail and the retry action.
+- **Do not re-point Home at `nextActionItem` alone.** It skips in-flight items by
+  design, so rendering the panel only from it makes the four actions disappear the
+  moment the user needs them. Use `QueueUiState.activeItem`.
+- **Never add a second definition of Home's elements.** Placement, visibility and
+  the QR-image offset all live in `HomeLayoutConfig` / `HomeLayoutCodec`; the UI
+  reads them and must not keep its own copy of any of it.
 - Do not claim a build, APK, CI or device pass that was not observed.
+- **Watch the file-tool size limit.** `str_replace` silently stops matching past
+  roughly the first 64 KB of `ui/QueueScreen.kt` (it reports "old string not
+  found" for text that is plainly there). Split new UI into its own file
+  (`ui/HomeLayoutUi.kt`) or edit the tail with an asserted, verified script
+  instead of assuming the text is wrong.

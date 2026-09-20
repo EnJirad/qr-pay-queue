@@ -172,6 +172,63 @@ class PaymentQueueTest {
         assertEquals(0, failed.unknownCount)
     }
 
+    // ---- launch failure (V0.9 §1) -------------------------------------------
+
+    @Test
+    fun aLaunchThatNeverReachedTheBankKeepsTheItemAndItsFourActions() {
+        val awaiting = twoItems().startSharing("a", 10L).shareLaunched("a", 20L)
+
+        val failedLaunch = awaiting.recordLaunchFailed("a", "the bank app is not installed", 30L)
+
+        // The rail and its retry action must survive a launch the bank never
+        // received: the item stays the one the user owes an answer for.
+        assertEquals(
+            PaymentStatus.AWAITING_USER_CONFIRMATION,
+            failedLaunch.item("a")?.status,
+        )
+        assertEquals("a", failedLaunch.awaitingAnswerItem?.id)
+        assertEquals("a", failedLaunch.handoffItem?.id)
+        assertEquals("the bank app is not installed", failedLaunch.item("a")?.failureDetail)
+        assertEquals(30L, failedLaunch.item("a")?.updatedAt)
+        assertEquals(
+            PaymentAttemptResult.FAILED,
+            failedLaunch.item("a")?.attempts?.last()?.result,
+        )
+
+        // Nothing was paid, nothing became a problem, and the queue still waits on
+        // this item instead of moving on by itself.
+        assertEquals(0, failedLaunch.completedCount)
+        assertEquals(0, failedLaunch.failedCount)
+        assertEquals(0, failedLaunch.problemCount)
+        assertEquals(PaymentStatus.READY, failedLaunch.item("b")?.status)
+        assertFalse(failedLaunch.canStartHandoff("b"))
+        assertFalse(failedLaunch.finished)
+
+        // ↻ retries the same Payment Item with the same QR version.
+        val retried = failedLaunch.retryShare("a", 40L)
+        assertEquals(PaymentStatus.AWAITING_USER_CONFIRMATION, retried.item("a")?.status)
+        assertEquals("a", retried.item("a")?.id)
+        assertEquals(1, retried.item("a")!!.versions.size)
+    }
+
+    @Test
+    fun aLaunchFailureIsOnlyRecordedWhileTheItemWaitsForAnAnswer() {
+        // A READY item never launched, so a stale callback is refused outright.
+        assertEquals(0, twoItems().recordLaunchFailed("a", "stale", 10L).item("a")!!.attempts.size)
+
+        // A completed item is resolved: a late failure cannot reopen it.
+        val completed = twoItems()
+            .startSharing("a", 10L)
+            .shareLaunched("a", 20L)
+            .confirmCompleted("a", 30L)
+
+        val afterLateCallback = completed.recordLaunchFailed("a", "stale", 40L)
+
+        assertEquals(PaymentStatus.COMPLETED, afterLateCallback.item("a")?.status)
+        assertEquals(1, afterLateCallback.completedCount)
+        assertNull(afterLateCallback.item("a")?.failureDetail)
+    }
+
     // ---- unknown path -------------------------------------------------------
 
     @Test

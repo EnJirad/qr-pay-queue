@@ -168,6 +168,44 @@ data class PaymentQueue(
     )
 
     /**
+     * The launch did not reach the bank: no bank was selected, the selected
+     * package is gone, the hand-off intent could not be resolved, or the stored
+     * image is missing.
+     *
+     * V0.9 §1 requires the four-action rail to survive this, so the item **stays**
+     * in [PaymentStatus.AWAITING_USER_CONFIRMATION] while the failure is recorded
+     * as its own attempt and kept as the reason shown under the QR. It is never
+     * turned into a [PaymentStatus.FAILED] item, because that would take the rail,
+     * the ↻ retry action and the user's way forward off the screen with it.
+     *
+     * Only an item that is awaiting an answer can record a launch failure, so a
+     * stale callback can never write a failure onto an item that already moved on.
+     */
+    fun recordLaunchFailed(itemId: String, detail: String?, nowMillis: Long = 0L): PaymentQueue {
+        val index = items.indexOfFirst { item -> item.id == itemId }
+        val item = items.getOrNull(index) ?: return this
+        if (item.status != PaymentStatus.AWAITING_USER_CONFIRMATION) return this
+        val attempt = paymentAttempt(
+            item,
+            item.currentVersion,
+            PaymentAttemptResult.FAILED,
+            detail,
+            nowMillis,
+        )
+        return copy(
+            items = items.replacingAt(
+                index,
+                item.copy(
+                    failureDetail = detail,
+                    lastAttemptAt = nowMillis,
+                    updatedAt = nowMillis,
+                    attempts = item.attempts + attempt,
+                ),
+            ),
+        )
+    }
+
+    /**
      * Records a known failure of this app: a missing stored image, an intent that
      * could not be built, or a bank that could not be opened. Nothing was paid.
      */

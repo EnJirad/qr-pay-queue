@@ -12,6 +12,9 @@ import com.enjirad.qrqueue.domain.BankRegistry
 import com.enjirad.qrqueue.domain.BankShareReadiness
 import com.enjirad.qrqueue.domain.BankTargetStatus
 import com.enjirad.qrqueue.domain.HandPreference
+import com.enjirad.qrqueue.domain.HomeElement
+import com.enjirad.qrqueue.domain.HomeLayoutCodec
+import com.enjirad.qrqueue.domain.HomeLayoutConfig
 import com.enjirad.qrqueue.domain.ImportProgress
 import com.enjirad.qrqueue.domain.ImportSummary
 import com.enjirad.qrqueue.domain.PaymentQueue
@@ -45,6 +48,12 @@ enum class QueueNotice {
     BANK_NOT_SHARE_CAPABLE,
     QR_REPLACEMENT_FAILED,
     DAILY_DATA_CLEARED,
+
+    /** Edit mode was requested while the home screen is locked. */
+    LAYOUT_LOCKED,
+
+    /** The home layout went back to the app's own default. */
+    LAYOUT_RESET,
 }
 
 /**
@@ -114,6 +123,16 @@ data class QueueUiState(
     /** When true, Home prevents vertical scroll so QR + actions stay fixed. */
     val homeLocked: Boolean = false,
 
+    // ---- home layout (V0.9 Edit mode) --------------------------------------
+    /** The user's own placement and visibility of the home elements. */
+    val homeLayout: HomeLayoutConfig = HomeLayoutConfig.DEFAULT,
+
+    /** True while the user is rearranging the home screen. */
+    val homeEditMode: Boolean = false,
+
+    /** True while the reset-layout confirmation is on screen. */
+    val layoutResetConfirmationVisible: Boolean = false,
+
     // ---- clear item ---------------------------------------------------------
     /** True when the clear-item confirmation dialog is visible. */
     val clearItemConfirmationVisible: Boolean = false,
@@ -165,6 +184,34 @@ data class QueueUiState(
 
     /** True while a bank hand-off intent is waiting to be launched. */
     val paymentInFlight: Boolean get() = imageIntent?.kind == ImageIntentKind.SHARE
+
+    /**
+     * The item the top QR area shows.
+     *
+     * An item that owns the hand-off always wins: it is the payment the user is in
+     * the middle of, and its four actions must be on screen (V0.9 §1) instead of
+     * being hidden behind the next item that merely happens to be ready. Only when
+     * nothing is in flight does Home fall back to the normal priority order
+     * (unresolved result → QR to replace → failed → next ready).
+     */
+    val activeItem: QueueItem?
+        get() = awaitingAnswerItem ?: nextActionItem
+
+    /**
+     * The open QR items that sit *below* the active QR area (V0.9 §2): everything
+     * still in the queue except the item the top area is already showing, so a
+     * newly imported QR joins the list and no item is duplicated or lost.
+     */
+    val queuedItems: List<QueueItem>
+        get() {
+            val current = activeItem
+            return queue?.items
+                .orEmpty()
+                .filter { item -> item.status.isActive && item.id != current?.id }
+        }
+
+    /** True when [element] should be drawn on the home screen. */
+    fun isElementVisible(element: HomeElement): Boolean = homeLayout.isVisible(element)
 }
 
 /**
@@ -193,12 +240,16 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val handPref = settingsStore.loadHandPreference()
         val autoReset = settingsStore.loadAutoDailyReset()
         val homeLocked = settingsStore.loadHomeLocked()
+        // An unreadable or absent layout decodes to the default layout, so an
+        // existing install opens exactly as before.
+        val homeLayout = HomeLayoutCodec.decode(settingsStore.loadHomeLayout())
 
         _uiState.update {
             it.copy(
                 handPreference = handPref,
                 autoDailyReset = autoReset,
                 homeLocked = homeLocked,
+                homeLayout = homeLayout,
             )
         }
 
@@ -600,16 +651,6 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val queue = _uiState.value.queue ?: return
         val item = queue.item(itemId) ?: return
 
-        // Without a selected target nothing is shared.
-        val bank = _uiState.value.selectedBank
-
-        if (bank == null) {
-            _uiState.update {
-                it.copy(notice = QueueNotice.BANK_UNAVAILABLE)
-            }
-            return
-        }
-
         if (!queue.canStartHandoff(itemId)) {
             _uiState.update {
                 it.copy(notice = QueueNotice.HANDOFF_IN_PROGRESS)
@@ -617,21 +658,32 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        beginHandOff(item, bank)
+        beginHandOff(item)
     }
 
     /**
-     * Re-verify the selected bank immediately before the hand-off.
+     * Starts the hand-off and only then tries to open the selected bank app.
      *
-     * IMPORTANT:
-     * The bank availability check is only about whether Android has a valid
-     * target to attempt. It is NOT the condition for changing the payment item
-     * into the user-confirmation state.
+     * IMPORTANT order (V0.9 §1):
+     *
+     *   1. READY -> SHARING -> AWAITING_USER_CONFIRMATION, persisted
+     *   2. re-verify the selected bank
+     *   3. ask Android to open it
+     *
+     * The bank availability check is therefore NOT the condition for entering the
+     * four-button state: a bank that is not selected, not installed or not
+     * resolvable leaves the item in AWAITING_USER_CONFIRMATION with a notice, so
+     * the four actions and the retry action are still there for the user.
      */
-    private fun beginHandOff(
-        item: QueueItem,
-        bank: BankInfo,
-    ) {
+    private fun beginHandOff(item: QueueItem) {
+        val awaiting = enterAwaiting(item.id) ?: return
+        val bank = _uiState.value.selectedBank
+
+        if (bank == null) {
+            recordLaunchFailure(item.id, QueueNotice.BANK_UNAVAILABLE)
+            return
+        }
+
         val status = BankTarget.query(
             getApplication(),
             bank,
@@ -649,13 +701,14 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val notice = BankShareFlow.noticeFor(readiness)
 
         if (notice != null) {
-            _uiState.update {
-                it.copy(notice = notice)
-            }
+            recordLaunchFailure(item.id, notice)
             return
         }
 
-        requestShare(item, bank)
+        requestShareIntent(
+            item = awaiting,
+            bank = bank,
+        )
     }
 
     fun onViewItemRequested(itemId: String) {
@@ -687,78 +740,69 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Starts the hand-off and immediately moves the item into
-     * AWAITING_USER_CONFIRMATION.
+     * Moves the item into AWAITING_USER_CONFIRMATION and persists it, returning
+     * the item as it now stands (null when the transition was refused).
      *
-     * The important ordering is:
-     *
-     *   1. READY -> SHARING
-     *   2. SHARING -> AWAITING_USER_CONFIRMATION
-     *   3. Persist the four-button state
-     *   4. Ask Android to open the bank
-     *
-     * Therefore the four buttons do not depend on whether Android successfully
-     * opens the bank application.
+     * The intermediate SHARING step exists only inside this call: it is never
+     * drawn on its own, and the queue is written once, already in the four-button
+     * state, so the four buttons do not depend on whether Android can open the
+     * bank application afterwards.
      */
-    private fun requestShare(
-        item: QueueItem,
-        bank: BankInfo,
-    ) {
-        val path = item.currentFilePath
-
-        if (path == null || !File(path).isFile) {
-            failItem(
-                item.id,
-                MISSING_IMAGE_DETAIL,
-                QueueNotice.IMAGE_MISSING,
-            )
-            return
-        }
-
+    private fun enterAwaiting(itemId: String): QueueItem? {
+        val currentQueue = _uiState.value.queue ?: return null
         val nowMillis = System.currentTimeMillis()
-        val currentQueue = _uiState.value.queue ?: return
 
         // First create the share attempt.
         val started = currentQueue.startSharing(
-            item.id,
+            itemId,
             nowMillis,
         )
 
-        if (started.item(item.id)?.status != PaymentStatus.SHARING) {
-            return
+        if (started.item(itemId)?.status != PaymentStatus.SHARING) {
+            return null
         }
 
         // Immediately resolve SHARING into the user-confirmation state.
         // This does NOT mean the payment was completed.
         val awaiting = started.shareLaunched(
-            item.id,
+            itemId,
             nowMillis,
         )
 
-        if (
-            awaiting.item(item.id)?.status !=
-            PaymentStatus.AWAITING_USER_CONFIRMATION
-        ) {
-            return
+        val awaitingItem = awaiting.item(itemId) ?: return null
+
+        if (awaitingItem.status != PaymentStatus.AWAITING_USER_CONFIRMATION) {
+            return null
         }
 
-        // Persist the four-button state BEFORE requesting Android to launch
-        // the banking application.
+        // Persist the four-button state BEFORE anything is launched.
         persist(awaiting)
 
-        // Only after the queue state is safely in AWAITING_USER_CONFIRMATION
-        // do we ask Android to hand the image to the selected bank.
-        _uiState.update {
-            it.copy(
-                imageIntent = ImageIntentRequest(
-                    kind = ImageIntentKind.SHARE,
-                    itemId = item.id,
-                    filePath = path,
-                    mimeType = item.currentMimeType,
-                    fileName = item.currentDisplayName,
-                    targetPackage = bank.packageName,
-                ),
+        return awaitingItem
+    }
+
+    /**
+     * Records a launch that did not reach the bank and tells the user why.
+     *
+     * The item keeps its four actions (V0.9 §1): an external app that cannot be
+     * opened must never fail the item out of the pay flow and take the rail and
+     * the retry action with it.
+     */
+    private fun recordLaunchFailure(
+        itemId: String,
+        notice: QueueNotice,
+        detail: String = LAUNCH_FAILED_DETAIL,
+    ) {
+        updateQueue { queue ->
+            queue.recordLaunchFailed(
+                itemId,
+                detail,
+                System.currentTimeMillis(),
             )
+        }
+
+        _uiState.update {
+            it.copy(notice = notice)
         }
     }
 
@@ -805,16 +849,28 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         // If launch failed, simply show a notice. The four buttons remain
         // available and the user can press Retry Share.
         if (!launched) {
-            _uiState.update {
-                it.copy(
+            val failedItemId = request?.itemId
+
+            if (failedItemId == null) {
+                _uiState.update {
+                    it.copy(
+                        notice = QueueNotice.SHARE_TARGET_UNAVAILABLE,
+                    )
+                }
+            } else {
+                // The attempt is recorded as a failure, but the item keeps its
+                // four actions: nothing about a launch that failed may take the
+                // rail or the retry action away from the user.
+                recordLaunchFailure(
+                    itemId = failedItemId,
                     notice = QueueNotice.SHARE_TARGET_UNAVAILABLE,
+                    detail = SHARE_FAILED_DETAIL,
                 )
             }
         }
 
         // If launched == true, there is intentionally nothing else to do.
         // The user must explicitly tell the queue whether the payment happened.
-        request?.itemId
     }
 
     // ---- user confirmation --------------------------------------------------
@@ -898,8 +954,109 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val newLocked = !_uiState.value.homeLocked
         settingsStore.saveHomeLocked(newLocked)
 
+        // Lock wins over edit mode: a locked layout cannot be rearranged, so
+        // locking Home also leaves edit mode.
         _uiState.update {
-            it.copy(homeLocked = newLocked)
+            it.copy(
+                homeLocked = newLocked,
+                homeEditMode = if (newLocked) false else it.homeEditMode,
+            )
+        }
+    }
+
+    // ---- home layout edit mode (V0.9) --------------------------------------
+
+    /**
+     * Turns edit mode on or off. The layout itself is untouched; only the meaning
+     * of a touch on the home screen changes, so normal mode keeps every action
+     * exactly as it was.
+     */
+    fun onEditModeToggled() {
+        val state = _uiState.value
+
+        if (!state.homeEditMode && state.homeLocked) {
+            // A locked layout is never editable (V0.9 §3.10).
+            _uiState.update {
+                it.copy(
+                    notice = QueueNotice.LAYOUT_LOCKED,
+                    homeEditMode = false,
+                )
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(homeEditMode = !state.homeEditMode)
+        }
+    }
+
+    /** Moves one element by (dx, dy) dp and persists the new layout. */
+    fun onHomeElementMoved(element: HomeElement, dx: Float, dy: Float) {
+        saveLayout(
+            _uiState.value.homeLayout.moveElement(element, dx, dy),
+        )
+    }
+
+    /** Moves the QR image inside its frame and persists the new layout. */
+    fun onQrImageMoved(dx: Float, dy: Float) {
+        saveLayout(
+            _uiState.value.homeLayout.moveQrImage(dx, dy),
+        )
+    }
+
+    /**
+     * Shows or hides one element. A non-hideable element (one the model marks as
+     * needed to pay or to confirm) is refused by the layout itself, so no code
+     * path can hide the actions that keep a payment safe.
+     */
+    fun onHomeElementVisibilityToggled(element: HomeElement) {
+        saveLayout(
+            _uiState.value.homeLayout.toggleVisible(element),
+        )
+    }
+
+    fun onResetLayoutRequested() {
+        if (_uiState.value.homeLocked) {
+            _uiState.update {
+                it.copy(notice = QueueNotice.LAYOUT_LOCKED)
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(layoutResetConfirmationVisible = true)
+        }
+    }
+
+    fun onResetLayoutDismissed() {
+        _uiState.update {
+            it.copy(layoutResetConfirmationVisible = false)
+        }
+    }
+
+    /** Resets every placement and visibility, and the QR image offset. */
+    fun onResetLayoutConfirmed() {
+        _uiState.update {
+            it.copy(layoutResetConfirmationVisible = false)
+        }
+
+        saveLayout(HomeLayoutConfig.DEFAULT)
+
+        _uiState.update {
+            it.copy(notice = QueueNotice.LAYOUT_RESET)
+        }
+    }
+
+    private fun saveLayout(layout: HomeLayoutConfig) {
+        val saved = settingsStore.saveHomeLayout(
+            HomeLayoutCodec.encode(layout),
+        )
+
+        _uiState.update {
+            it.copy(
+                homeLayout = layout,
+                notice = if (saved) it.notice else QueueNotice.QUEUE_NOT_SAVED,
+            )
         }
     }
 
@@ -1087,10 +1244,12 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val path = item.currentFilePath
 
         if (path == null || !File(path).isFile) {
-            failItem(
-                item.id,
-                MISSING_IMAGE_DETAIL,
-                QueueNotice.IMAGE_MISSING,
+            // The four actions must survive this: the item stays awaiting and the
+            // user is told, instead of being failed out of the rail.
+            recordLaunchFailure(
+                itemId = item.id,
+                notice = QueueNotice.IMAGE_MISSING,
+                detail = MISSING_IMAGE_DETAIL,
             )
             return
         }
@@ -1287,6 +1446,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         const val MISSING_IMAGE_DETAIL =
             "The imported image file is missing from this device."
+
+        const val LAUNCH_FAILED_DETAIL =
+            "The bank app could not be opened with this QR image. Nothing was paid; you can try again."
 
         const val SHARE_FAILED_DETAIL =
             "The selected bank did not accept the shared image (no activity matched the hand-off intent)."

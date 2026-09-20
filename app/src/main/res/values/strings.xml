@@ -4,7 +4,7 @@
     <string name="screen_title">QR Payment Queue</string>
     <string name="screen_subtitle">เลือกธนาคาร จัดคิวภาพ QR ส่งให้ธนาคารที่เลือกทีละรูป</string>
     <string name="screen_description">เลือกธนาคารสำหรับชำระเงินก่อน แล้วเลือกรูป QR หลายรูปได้ในครั้งเดียว ระบบจะนำเข้ารูปทั้งหมด กลับมาหน้าแรก แล้วคุณเลือกทำรายการทีละรูป แอปนี้ไม่ต้องอ่าน QR ไม่ตรวจสอบยอดเงิน และไม่ยืนยันการชำระเงินแทนคุณ</string>
-    <string name="version_chip">v0.8.0 · 4-action one-handed payment flow</string>
+    <string name="version_chip">v0.9.0 · QR flow + home layout edit mode</string>
 
     <!-- tabs -->
     <string name="tab_home">หน้าแรก</string>
@@ -36,7 +36,30 @@
     <string name="action_unknown">ไม่ทราบผล</string>
     <string name="action_lock">ล็อกหน้าจอ</string>
     <string name="action_unlock">ปลดล็อกหน้าจอ</string>
+    <string name="action_edit">แก้ไขผังหน้าแรก</string>
+    <string name="action_edit_done">แก้ไขเสร็จแล้ว</string>
+
+    <!-- home layout edit mode (V0.9) -->
+    <string name="edit_mode_title">โหมดแก้ไขผังหน้าแรก</string>
+    <string name="edit_mode_hint">ลากองค์ประกอบบนหน้าจอเพื่อย้ายตำแหน่ง ระบบจะบันทึกไว้ให้เอง และแตะปุ่มควบคุมด้านล่างเพื่อซ่อนหรือแสดงองค์ประกอบ ยกเลิกไม่ได้: ไม่สามารถซ่อนปุ่มที่จำเป็นต่อการชำระเงินและความปลอดภัย</string>
+    <string name="edit_hide_element">ซ่อนองค์ประกอบนี้</string>
+    <string name="edit_show_element">แสดงองค์ประกอบนี้</string>
+    <string name="edit_reset_layout">รีเซ็ตผัง</string>
+    <string name="edit_element_qr_image">รูป QR</string>
+    <string name="edit_element_scan">ปุ่มส่ง QR</string>
+    <string name="edit_element_confirm">ปุ่มยืนยันว่าชำระแล้ว</string>
+    <string name="edit_element_warning">ปุ่มแจ้งว่า QR มีปัญหา</string>
+    <string name="edit_element_unknown">ปุ่มไม่ทราบผล</string>
+    <string name="edit_element_retry">ปุ่มลองสแกนอีกครั้ง</string>
+    <string name="edit_element_add_qr">ปุ่มเพิ่ม QR</string>
+    <string name="edit_element_guidance">คำแนะนำความปลอดภัย</string>
+    <string name="edit_element_import_hint">ข้อความช่วยเหลือการเพิ่ม QR</string>
+    <string name="edit_element_progress">ตัวเลขความคืบหน้า</string>
+    <string name="reset_layout_title">รีเซ็ตผังหน้าแรก?</string>
+    <string name="reset_layout_body">ตำแหน่งและค่าซ่อน/แสดงทั้งหมดจะกลับไปเป็นค่าเริ่มต้นของแอป การจัดวางที่คุณตั้งไว้จะหายไป</string>
+    <string name="reset_layout_confirm">รีเซ็ตผัง</string>
     <string name="home_progress">%1$d / %2$d</string>
+    <string name="home_queue_title">คิวที่เหลือ</string>
 
     <!-- bank selection -->
     <string name="bank_section_title">ธนาคารสำหรับชำระเงิน</string>
@@ -158,6 +181,8 @@
     <string name="notice_queue_cleared">ล้างข้อมูลแล้ว</string>
     <string name="notice_qr_replacement_failed">เปลี่ยน QR ไม่สำเร็จ QR เดิมของรายการนี้ยังอยู่เหมือนเดิม</string>
     <string name="notice_daily_data_cleared">ล้างข้อมูลประจำวันแล้ว</string>
+    <string name="notice_layout_locked">หน้าหลักถูกล็อกอยู่ กรุณาปลดล็อกก่อนแก้ไขผัง</string>
+    <string name="notice_layout_reset">รีเซ็ตผังหน้าแรกเป็นค่าเริ่มต้นแล้ว</string>
     <string name="notice_item_cleared">ล้างรายการแล้ว</string>
 
     <!-- safety -->
