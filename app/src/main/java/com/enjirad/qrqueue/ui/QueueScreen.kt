@@ -1832,21 +1832,25 @@ private fun ProblemActionButton(
     // Each action is an explicit user decision, mapped onto the transition the
     // domain already has for it. Nothing is retried, completed, replaced or
     // re-shared by the app itself.
-    val onClick: () -> Unit = when (action) {
-        // A FAILED item never reached the bank, so its intact QR may be handed over
-        // again. An UNKNOWN one must not be re-sent by a tap: this runs the domain's
-        // explicit retry (UNKNOWN -> READY) instead, and sends nothing.
-        ProblemAction.RESCAN ->
-            if (status == PaymentStatus.FAILED) {
-                { callbacks.onShareItem(item.id) }
-            } else {
-                { callbacks.onRetryItem(item.id) }
-            }
+    // One lambda whose body decides, so the action is picked when the user taps and
+    // not while the screen is composed.
+    val onClick: () -> Unit = {
+        when (action) {
+            // A FAILED item never reached the bank, so its intact QR may be handed
+            // over again. An UNKNOWN one must not be re-sent by a tap: this runs the
+            // domain's explicit retry (UNKNOWN -> READY) instead, and sends nothing.
+            ProblemAction.RESCAN ->
+                if (status == PaymentStatus.FAILED) {
+                    callbacks.onShareItem(item.id)
+                } else {
+                    callbacks.onRetryItem(item.id)
+                }
 
-        ProblemAction.REPLACE_QR -> { callbacks.onReplaceQr(item.id) }
-        ProblemAction.CONFIRM_COMPLETED -> { callbacks.onConfirmCompleted(item.id) }
-        ProblemAction.MARK_QR_UNUSABLE -> { callbacks.onMarkQrUnusable(item.id) }
-        ProblemAction.CLEAR_ITEM -> { callbacks.onClearItem(item.id) }
+            ProblemAction.REPLACE_QR -> callbacks.onReplaceQr(item.id)
+            ProblemAction.CONFIRM_COMPLETED -> callbacks.onConfirmCompleted(item.id)
+            ProblemAction.MARK_QR_UNUSABLE -> callbacks.onMarkQrUnusable(item.id)
+            ProblemAction.CLEAR_ITEM -> callbacks.onClearItem(item.id)
+        }
     }
 
     val icon = when (action) {
