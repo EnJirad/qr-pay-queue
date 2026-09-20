@@ -204,7 +204,8 @@ class NavigationBadgeTest {
         // COMPLETED lists A, counted for the tab.
         assertEquals(listOf("a"), after.queue?.completedItems?.map { item -> item.id })
         assertEquals(1, after.completedCount)
-        assertEquals(1, after.queue?.itemCount)
+        // A was never deleted: completing is a status change, not a removal.
+        assertEquals(2, after.queue?.itemCount)
         // A is no longer a problem.
         assertNull(after.problemBadge)
     }

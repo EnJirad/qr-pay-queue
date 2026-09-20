@@ -434,13 +434,25 @@ class PaymentQueueTest {
         // items belong to the ปัญหา tab and the completed one to ชำระแล้ว.
         assertEquals("ready-1", queue.nextActionItem?.id)
 
-        // A problem item can never come back as the next action: the user deals
-        // with the ปัญหา tab on their own terms, and Home never waits on it.
-        assertEquals("ready-1", queue.nextActionItem?.id)
-
         // With the ready item handed over, no *other* ready item exists, so nothing
-        // is offered — and none of the problem or completed items step in.
-        val inFlight = queue.startSharing("ready-1", 10L).shareLaunched("ready-1", 20L)
+        // is offered — and none of the problem or completed items step in. The
+        // UNKNOWN item holds the hand-off (double-payment protection), so the
+        // sharing transition is refused and nothing reaches the awaiting state.
+        val blocked = queue.startSharing("ready-1", 10L).shareLaunched("ready-1", 20L)
+        assertNull(blocked.nextActionItem)
+        assertNull(blocked.awaitingAnswerItem)
+        assertEquals(PaymentStatus.READY, blocked.item("ready-1")?.status)
+
+        // Without an unresolved result the same hand-off proceeds and the item
+        // waits for the user's answer on Home; the failed and reported items stay
+        // in the ปัญหา tab and never step in.
+        val clean = testQueue(
+            testItem("ready-1", 0),
+            testItem("failed-1", 1, PaymentStatus.FAILED),
+            testItem("qr-1", 2, PaymentStatus.REQUIRES_QR_REPLACEMENT),
+            testItem("done-0", 3, PaymentStatus.COMPLETED),
+        )
+        val inFlight = clean.startSharing("ready-1", 10L).shareLaunched("ready-1", 20L)
         assertNull(inFlight.nextActionItem)
         assertEquals("ready-1", inFlight.awaitingAnswerItem?.id)
 
@@ -448,8 +460,8 @@ class PaymentQueueTest {
         // ready. The reported QR is still in the queue, never deleted.
         val done = inFlight.confirmCompleted("ready-1", 30L)
         assertNull(done.nextActionItem)
-        assertEquals(listOf("failed-1", "qr-1", "unknown-1"), done.problemItems.map { it.id })
-        assertEquals(5, done.itemCount)
+        assertEquals(listOf("failed-1", "qr-1"), done.problemItems.map { it.id })
+        assertEquals(4, done.itemCount)
         assertEquals(2, done.completedCount)
     }
 
