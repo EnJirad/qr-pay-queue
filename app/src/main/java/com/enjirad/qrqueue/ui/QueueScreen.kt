@@ -102,10 +102,6 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.runtime.DisposableEffect
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /** Every action the queue screen can raise; the route wires them to the ViewModel. */
 data class QueueCallbacks(
@@ -145,7 +141,6 @@ data class QueueCallbacks(
 fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(),
@@ -167,13 +162,11 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
         }
     }
 
-    // Replacing a QR opens the picker for exactly one image, and never creates a
-    // new Payment Item: the result is attached to the item that asked for it.
     LaunchedEffect(state.replaceQrItemId) {
         if (state.replaceQrItemId != null) {
             replacementPicker.launch(
                 PickVisualMediaRequest(
-                    ActivityResultContracts.PickVisualMedia.ImageOnly,
+                    ActivityResultContracts.PickVisualMedia.ImageOnly
                 ),
             )
         }
@@ -188,29 +181,13 @@ fun QueueRoute(viewModel: QueueViewModel = viewModel()) {
         )
     }
 
-    // Detect when the Queue screen returns to the foreground after
-    // handing the QR image off to the banking app.
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.onBankAppReturnedToForeground()
-            }
-        }
-
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
     QueueScreen(
         state = state,
         callbacks = QueueCallbacks(
             onImportImages = {
                 imagePicker.launch(
                     PickVisualMediaRequest(
-                        ActivityResultContracts.PickVisualMedia.ImageOnly,
+                        ActivityResultContracts.PickVisualMedia.ImageOnly
                     ),
                 )
             },
