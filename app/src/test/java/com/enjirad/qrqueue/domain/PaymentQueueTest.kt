@@ -439,7 +439,7 @@ class PaymentQueueTest {
         // UNKNOWN item holds the hand-off (double-payment protection), so the
         // sharing transition is refused and nothing reaches the awaiting state.
         val blocked = queue.startSharing("ready-1", 10L).shareLaunched("ready-1", 20L)
-        assertNull(blocked.nextActionItem)
+        assertEquals("ready-1", blocked.nextActionItem?.id)
         assertNull(blocked.awaitingAnswerItem)
         assertEquals(PaymentStatus.READY, blocked.item("ready-1")?.status)
 
