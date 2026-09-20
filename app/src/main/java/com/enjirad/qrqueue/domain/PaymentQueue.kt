@@ -92,19 +92,20 @@ data class PaymentQueue(
             .sortedWith(compareBy({ it.completedAt ?: Long.MAX_VALUE }, { it.position }))
 
     /**
-     * The item Home should offer next, following the product's priority order:
-     * unresolved result, QR that must be replaced, reported failure, then the
-     * next READY item — each within the original queue order.
+     * The item Home should offer next: the first **READY** item in queue order.
      *
-     * Problem items are offered on purpose. The one-handed Home screen must say
-     * what to do next without the user hunting for it (V0.5 §5/§6), and it
-     * renders the problem card from this same item; the ปัญหา tab lists every
-     * problem for the cases where the user goes looking instead.
+     * Home is the working queue (V0.9.2). A problem item — an unresolved result, a
+     * QR the user reported, a reported failure — waits in the ปัญหา tab, where the
+     * user deals with it on their own terms; a completed item is listed in
+     * ชำระแล้ว; an item that holds the hand-off is already on Home through
+     * [awaitingAnswerItem]. None of them is ever offered here as the next action,
+     * so reporting a problem can never pull Home back to the reported QR and the
+     * queue always continues with the next QR in order.
      */
     val nextActionItem: QueueItem?
         get() = items
-            .filter { item -> priorityRank(item.status) < IN_FLIGHT_RANK }
-            .minWithOrNull(compareBy({ item -> priorityRank(item.status) }, { item -> item.position }))
+            .filter { item -> item.status == PaymentStatus.READY }
+            .minByOrNull { item -> item.position }
 
     /** True when no QR image with this content hash is already in the queue. */
     fun hasFingerprint(fingerprint: String?): Boolean {
@@ -575,18 +576,6 @@ data class PaymentQueue(
     companion object {
         /** The next position for an imported item when there is no queue yet. */
         const val FIRST_POSITION = 0
-
-        /** Sort rank inside [nextActionItem]; anything not listed is in flight. */
-        private fun priorityRank(status: PaymentStatus): Int = when (status) {
-            PaymentStatus.UNKNOWN -> 0
-            PaymentStatus.REQUIRES_QR_REPLACEMENT -> 1
-            PaymentStatus.FAILED -> 2
-            PaymentStatus.READY -> 3
-            else -> IN_FLIGHT_RANK
-        }
-
-        /** Rank given to items that Home does not offer as "the next action". */
-        private const val IN_FLIGHT_RANK = 9
 
         fun create(
             queueId: String,

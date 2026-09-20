@@ -421,28 +421,72 @@ class PaymentQueueTest {
     // ---- home priority ------------------------------------------------------
 
     @Test
-    fun homeOffersUnresolvedResultsBeforeAnythingElse() {
+    fun homeOffersOnlyReadyItemsAndNeverAProblemOrACompletedOne() {
         val queue = testQueue(
             testItem("ready-1", 0),
             testItem("failed-1", 1, PaymentStatus.FAILED),
             testItem("qr-1", 2, PaymentStatus.REQUIRES_QR_REPLACEMENT),
             testItem("unknown-1", 3, PaymentStatus.UNKNOWN),
+            testItem("done-1", 4, PaymentStatus.COMPLETED),
         )
 
-        // UNKNOWN first, then the QR that must be replaced, then FAILED, then READY.
-        assertEquals("unknown-1", queue.nextActionItem?.id)
+        // The queue continues with the next READY item in queue order: the problem
+        // items belong to the ปัญหา tab and the completed one to ชำระแล้ว.
+        assertEquals("ready-1", queue.nextActionItem?.id)
 
-        // Retrying the unknown item hands the priority back to the next problem,
-        // still in queue order — the app never silently reorders the queue.
-        val retried = queue.retryItem("unknown-1")
-        assertEquals(PaymentStatus.READY, retried.item("unknown-1")?.status)
-        assertEquals("qr-1", retried.nextActionItem?.id)
+        // A problem item can never come back as the next action: the user deals
+        // with the ปัญหา tab on their own terms, and Home never waits on it.
+        assertEquals("ready-1", queue.nextActionItem?.id)
 
-        // Replacing that QR resolves it too, so the failed item becomes next.
-        val replaced = retried.replaceCurrentQr("qr-1", testVersion("qr-1-v2", "qr-1", 2), 2L)
-        assertEquals(PaymentStatus.READY, replaced.item("qr-1")?.status)
-        assertEquals("failed-1", replaced.nextActionItem?.id)
-        assertEquals("ready-1", replaced.retryItem("failed-1").nextActionItem?.id)
+        // With the ready item handed over, no *other* ready item exists, so nothing
+        // is offered — and none of the problem or completed items step in.
+        val inFlight = queue.startSharing("ready-1", 10L).shareLaunched("ready-1", 20L)
+        assertNull(inFlight.nextActionItem)
+        assertEquals("ready-1", inFlight.awaitingAnswerItem?.id)
+
+        // Completing the item keeps the rule: what remains on Home is only what is
+        // ready. The reported QR is still in the queue, never deleted.
+        val done = inFlight.confirmCompleted("ready-1", 30L)
+        assertNull(done.nextActionItem)
+        assertEquals(listOf("failed-1", "qr-1", "unknown-1"), done.problemItems.map { it.id })
+        assertEquals(5, done.itemCount)
+        assertEquals(2, done.completedCount)
+    }
+
+    @Test
+    fun reportingAProblemHandsHomeToTheNextReadyItem() {
+        val queue = testQueue(testItem("a", 0), testItem("b", 1), testItem("c", 2))
+
+        assertEquals("a", queue.nextActionItem?.id)
+
+        val reported = queue.reportProblem("a", "QR ใช้งานไม่ได้", 10L)
+
+        // HOME continues with the next QR: the reported one is a problem now.
+        assertEquals(PaymentStatus.REQUIRES_QR_REPLACEMENT, reported.item("a")?.status)
+        assertEquals("b", reported.nextActionItem?.id)
+        assertEquals(listOf("a"), reported.problemItems.map { it.id })
+        assertFalse(reported.finished)
+
+        // And the reported item is not deleted: it is still in the queue, kept for
+        // the ปัญหา tab where the user replaces its QR whenever they choose.
+        assertEquals(3, reported.itemCount)
+        assertEquals("a", reported.item("a")?.id)
+        assertEquals("QR ใช้งานไม่ได้", reported.item("a")?.problemReason)
+    }
+
+    @Test
+    fun completingAnItemHandsHomeToTheNextReadyItem() {
+        val queue = testQueue(testItem("a", 0), testItem("b", 1), testItem("c", 2))
+
+        val done = queue
+            .startSharing("a", 10L)
+            .shareLaunched("a", 20L)
+            .confirmCompleted("a", 30L)
+
+        assertEquals(PaymentStatus.COMPLETED, done.item("a")?.status)
+        assertEquals("b", done.nextActionItem?.id)
+        assertEquals(listOf("a"), done.completedItems.map { it.id })
+        assertEquals(3, done.itemCount)
     }
 
     @Test

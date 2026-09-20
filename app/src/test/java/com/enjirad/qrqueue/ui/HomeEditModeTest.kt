@@ -36,14 +36,14 @@ class HomeEditModeTest {
     fun `the queued list is the open queue without the active QR`() {
         val state = QueueUiState(
             queue = queueOf(
-                testItem("active", 0, PaymentStatus.UNKNOWN),
-                testItem("ready-1", 1),
-                testItem("ready-2", 2),
+                testItem("ready-1", 0),
+                testItem("ready-2", 1),
+                testItem("ready-3", 2),
             ),
         )
 
-        assertEquals("active", state.nextActionItem?.id)
-        assertEquals(listOf("ready-1", "ready-2"), state.queuedItems.map { item -> item.id })
+        assertEquals("ready-1", state.nextActionItem?.id)
+        assertEquals(listOf("ready-2", "ready-3"), state.queuedItems.map { item -> item.id })
     }
 
     @Test

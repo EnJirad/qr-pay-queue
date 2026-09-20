@@ -164,6 +164,94 @@ class NavigationBadgeTest {
         assertEquals(PaymentStatus.READY, state.nextActionItem?.status)
     }
 
+    // ---- the tab separation (V0.9.2) ----------------------------------------
+
+    @Test
+    fun reportingAProblemLeavesHomeWithTheNextQrAndListsItUnderProblems() {
+        val queue = queueOf(testItem("a", 0), testItem("b", 1))
+        val state = QueueUiState(queue = queue)
+        assertEquals("a", state.activeItem?.id)
+
+        val reported = queue.reportProblem("a", "QR ใช้งานไม่ได้", 10L)
+        val after = state.copy(queue = reported)
+
+        // HOME continues with B.
+        assertEquals("b", after.activeItem?.id)
+        assertEquals("b", after.nextActionItem?.id)
+        // PROBLEMS lists A with its reason.
+        assertEquals(listOf("a"), after.queue?.problemItems?.map { item -> item.id })
+        assertEquals(1, after.problemCount)
+        assertEquals(1, after.problemBadge)
+        // COMPLETED has nothing yet, and A was never deleted.
+        assertEquals(0, after.completedCount)
+        assertEquals(2, after.queue?.itemCount)
+    }
+
+    @Test
+    fun confirmingACompletedItemLeavesHomeWithTheNextQrAndListsItUnderCompleted() {
+        val queue = queueOf(testItem("a", 0), testItem("b", 1))
+        val state = QueueUiState(queue = queue)
+        assertEquals("a", state.activeItem?.id)
+
+        val completed = queue
+            .startSharing("a", 10L)
+            .shareLaunched("a", 20L)
+            .confirmCompleted("a", 30L)
+        val after = state.copy(queue = completed)
+
+        // HOME continues with B.
+        assertEquals("b", after.activeItem?.id)
+        // COMPLETED lists A, counted for the tab.
+        assertEquals(listOf("a"), after.queue?.completedItems?.map { item -> item.id })
+        assertEquals(1, after.completedCount)
+        assertEquals(1, after.queue?.itemCount)
+        // A is no longer a problem.
+        assertNull(after.problemBadge)
+    }
+
+    @Test
+    fun reportingAndCompletingDifferentItemsKeepsEveryTabSeparate() {
+        val queue = queueOf(testItem("a", 0), testItem("b", 1), testItem("c", 2))
+        val state = QueueUiState(queue = queue)
+        assertEquals("a", state.activeItem?.id)
+
+        val afterReport = queue.reportProblem("a", "QR ใช้งานไม่ได้", 10L)
+        assertEquals("b", QueueUiState(queue = afterReport).activeItem?.id)
+
+        val afterComplete = afterReport
+            .startSharing("b", 20L)
+            .shareLaunched("b", 30L)
+            .confirmCompleted("b", 40L)
+        val after = state.copy(queue = afterComplete)
+
+        // HOME continues with C.
+        assertEquals("c", after.activeItem?.id)
+        // PROBLEMS keeps A, COMPLETED keeps B, and nothing was deleted.
+        assertEquals(listOf("a"), after.queue?.problemItems?.map { item -> item.id })
+        assertEquals(listOf("b"), after.queue?.completedItems?.map { item -> item.id })
+        assertEquals(3, after.queue?.itemCount)
+    }
+
+    @Test
+    fun tabsNeverRemoveAnythingFromPersistence() {
+        val queue = queueOf(
+            testItem("a", 0, PaymentStatus.REQUIRES_QR_REPLACEMENT),
+            testItem("b", 1),
+            testItem("c", 2),
+        )
+            .startSharing("c", 10L)
+            .shareLaunched("c", 20L)
+            .confirmCompleted("c", 30L)
+
+        val state = QueueUiState(queue = queue, selectedTab = QueueTab.PROBLEMS)
+
+        // Viewing the tabs is a pure read of the queue state.
+        assertEquals(3, state.queue?.itemCount)
+        assertEquals(3, state.copy(selectedTab = QueueTab.COMPLETED).queue?.itemCount)
+        assertEquals(3, state.copy(selectedTab = QueueTab.HOME).queue?.itemCount)
+        assertTrue(state.problemCount == 1 && state.completedCount == 1)
+    }
+
     @Test
     fun anItemWaitingForTheUserIsNotOfferedAsANewAction() {
         val queue = queueOf(testItem("a", 0)).startSharing("a").shareLaunched("a")

@@ -191,8 +191,10 @@ data class QueueUiState(
      * An item that owns the hand-off always wins: it is the payment the user is in
      * the middle of, and its four actions must be on screen (V0.9 §1) instead of
      * being hidden behind the next item that merely happens to be ready. Only when
-     * nothing is in flight does Home fall back to the normal priority order
-     * (unresolved result → QR to replace → failed → next ready).
+     * nothing is in flight does Home fall back to the next READY item —
+     * [nextActionItem] never offers a problem or completed item, so reporting a
+     * problem or confirming a payment always hands the top area to the next QR in
+     * the queue.
      */
     val activeItem: QueueItem?
         get() = awaitingAnswerItem ?: nextActionItem
@@ -1110,8 +1112,13 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val queue = _uiState.value.queue ?: return
         val nowMillis = System.currentTimeMillis()
 
+        // The reported item keeps its identity and its place in the queue
+        // (REQUIRES_QR_REPLACEMENT, reason recorded); it is now only listed in the
+        // ปัญหา tab. Home's next-action selection ignores problem items, so the
+        // queue continues with the next READY QR immediately — replacing the QR is
+        // never demanded, and nothing is deleted.
         persist(
-            queue.markQrUnusable(
+            queue.reportProblem(
                 itemId,
                 QR_UNUSABLE_DETAIL,
                 nowMillis,

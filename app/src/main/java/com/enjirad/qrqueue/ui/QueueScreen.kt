@@ -356,6 +356,14 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // The three tabs (HOME / PROBLEMS / COMPLETED) sit below every tab, so the
+        // bottom navigation is never lost when the user switches views.
+        bottomBar = {
+            QueueBottomBar(
+                state = state,
+                onSelectTab = callbacks.onSelectTab,
+            )
+        },
     ) { innerPadding ->
         when (state.selectedTab) {
             QueueTab.HOME -> {
@@ -412,7 +420,6 @@ fun QueueScreen(state: QueueUiState, callbacks: QueueCallbacks) {
                 }
             }
         }
-        // Bottom nav is not shown: Home is a fixed control panel.
     }
 }
 
@@ -985,6 +992,7 @@ private fun HomeTab(
                 queue = queue,
                 leftHanded = leftHanded,
                 onImportImages = callbacks.onImportImages,
+                onSelectTab = callbacks.onSelectTab,
             )
         } else if (queue == null) {
             EmptyHome(
@@ -1539,6 +1547,7 @@ private fun FinishedControlPanel(
     queue: PaymentQueue,
     leftHanded: Boolean,
     onImportImages: () -> Unit,
+    onSelectTab: (QueueTab) -> Unit,
 ) {
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -1557,32 +1566,54 @@ private fun FinishedControlPanel(
                     contentDescription = stringResource(R.string.action_import),
                     tint = MaterialTheme.colorScheme.primary,
                 )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(Icons.Outlined.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(12.dp))
-                    Text(stringResource(R.string.finished_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Spacer(Modifier.height(4.dp))
-                    Text(stringResource(R.string.finished_count, queue.completedCount, queue.itemCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
+                FinishedSummary(queue = queue, onSelectTab = onSelectTab)
             } else {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(Icons.Outlined.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(12.dp))
-                    Text(stringResource(R.string.finished_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Spacer(Modifier.height(4.dp))
-                    Text(stringResource(R.string.finished_count, queue.completedCount, queue.itemCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
+                FinishedSummary(queue = queue, onSelectTab = onSelectTab)
                 ActionIconButton(
                     onClick = onImportImages,
                     icon = Icons.Outlined.Add,
                     contentDescription = stringResource(R.string.action_import),
                     tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The "all done" summary. Every open item is accounted for: what still needs the
+ * user is one tap away in the ปัญหา tab, what is confirmed is in ชำระแล้ว — the
+ * bottom bar is always there, this just points at it.
+ */
+@Composable
+private fun FinishedSummary(
+    queue: PaymentQueue,
+    onSelectTab: (QueueTab) -> Unit,
+) {
+    Column(
+        modifier = Modifier.weight(1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(Icons.Outlined.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(12.dp))
+        Text(stringResource(R.string.finished_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Spacer(Modifier.height(4.dp))
+        Text(stringResource(R.string.finished_count, queue.completedCount, queue.itemCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        if (queue.problemCount > 0) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = { onSelectTab(QueueTab.PROBLEMS) }) {
+                Text(
+                    text = stringResource(R.string.finished_open_problems, queue.problemCount),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        if (queue.completedCount > 0) {
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { onSelectTab(QueueTab.COMPLETED) }) {
+                Text(
+                    text = stringResource(R.string.finished_open_completed, queue.completedCount),
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
@@ -1621,7 +1652,12 @@ private fun ColumnScope.ProblemsTab(
 @Composable
 private fun ColumnScope.CompletedTab(queue: PaymentQueue?) {
     val completed = queue?.completedItems.orEmpty()
-    SectionTitle(text = stringResource(R.string.completed_title))
+    // Same badge pattern as the ปัญหา tab: the count comes straight from the
+    // queue, and nothing here is ever removed from persistence by viewing it.
+    SectionTitle(
+        text = stringResource(R.string.completed_title),
+        badge = if (completed.isEmpty()) null else completed.size.toString(),
+    )
 
     Text(
         text = stringResource(R.string.completed_count, completed.size),

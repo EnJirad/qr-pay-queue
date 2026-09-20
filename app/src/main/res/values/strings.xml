@@ -136,6 +136,8 @@
     <string name="finished_title">วันนี้ชำระครบแล้ว</string>
     <string name="finished_count">%1$d / %2$d รายการเสร็จสิ้น</string>
     <string name="finished_body">ทุกรูปในคิวได้รับการยืนยันจากคุณแล้ว แอปไม่ได้อ่าน QR และไม่ได้ตัดสินผลการชำระเงินแทนคุณ</string>
+    <string name="finished_open_problems">มีรายการรอจัดการ %1$d รายการในปัญหา</string>
+    <string name="finished_open_completed">ดูรายการที่ชำระแล้ว %1$d รายการ</string>
 
     <!-- import -->
     <string name="import_progress_title">กำลังเพิ่ม QR</string>
