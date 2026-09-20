@@ -29,14 +29,18 @@ lazy daily reset.
 
 ## CI status right now (read this first)
 
-**`57426ea` GREEN (run `35484704958`, observed 2026-09-20): 236 unit tests,
-`lintDebug`, `assembleDebug`, APK 9.4M, artifact `qr-payment-queue-v0.9.1-debug`.
+**`4c6dfae` GREEN (run `35487356518`, observed 2026-09-20): 242 unit tests,
+`lintDebug`, `assembleDebug`, APK, artifact `qr-payment-queue-v0.9.1-debug`.
 Everything pushed to `main` is compiled, unit-tested, linted and packaged; the
-V0.9.1 and V0.9 sections below are what that run contains (on top of the V0.8 base
+V0.9.2 and V0.9.1 sections below are what that run contains (on top of the V0.8 base
 the repository owner commits itself).**
 
 | Commit | Run | Result |
 | --- | --- | --- |
+| `4c6dfae` test: a refused hand-off keeps the ready item as the next action | `35487356518` | **GREEN** — 242 unit tests, `lintDebug`, `assembleDebug`, APK (V0.9.2 tab separation) |
+| `07d2993` test: align hand-off and completion expectations with the domain rules | `35487158437` | RED — 1 unit test failure (my own `assertNull(nextActionItem)` after a *refused* hand-off; the READY item correctly stays offered) |
+| `1ec97b2` fix: scope the finished summary's weight inside its Row | `35486632448` | RED — 2 unit test failures (`awaitingAnswerItem` with an UNKNOWN in the queue; `itemCount` after completion) |
+| `aee172c` feat: show the three-tab bottom bar and keep problems off the home queue (V0.9.2) | `35486470422` | RED — compile error (`weight` outside `RowScope`) + the 2 test failures above |
 | `66bc019` docs: record the green V0.9 CI run and extend the device checklist | `35483467102` | GREEN |
 | `57426ea` feat: place the actions of both states in Home Edit mode (V0.9.1) | `35484704958` | **GREEN** — 236 unit tests, `lintDebug`, `assembleDebug`, APK 9.4M |
 | `18c25ae` (owner's V0.8 base + its own four-action work) | `35481283802` | GREEN — the base this change was built on |
